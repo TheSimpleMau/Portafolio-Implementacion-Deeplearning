@@ -1,0 +1,27 @@
+.DS_Store
+.venv/
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Datos, modelos y resultados generados
+data/
+models/
+resultados/
+graficas/
+
+# Material de consulta (artículos con derechos de autor)
+articulos_investigacion/
+
+# LaTeX
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+*.toc

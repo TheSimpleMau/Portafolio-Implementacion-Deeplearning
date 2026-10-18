@@ -10,12 +10,21 @@ import zstandard
 
 from preprocessing import encode_move, encode_position, legal_moves_info
 
-RAW_DATA_PATH = "data/raw/lichess_db_standard_rated_2013-03.pgn.zst"
-PROCESSED_PATH = "data/processed/positions_2013-03.npz"
-SUMMARY_PATH = "data/processed/positions_2013-03_resumen.json"
+# 2013-03 solo sirve para depurar; el conjunto principal es el mes más reciente.
+MONTH = "2026-09"
+RAW_DATA_PATH = f"data/raw/lichess_db_standard_rated_{MONTH}.pgn.zst"
+PROCESSED_PATH = f"data/processed/positions_{MONTH}.npz"
+SUMMARY_PATH = f"data/processed/positions_{MONTH}_resumen.json"
 
 POSITIONS_PER_GAME = 12
+# También excluye UltraBullet.
 EXCLUDED_EVENTS = ("Bullet",)
+# Cuentas de motores: sus jugadas no son humanas.
+EXCLUDED_TITLES = ("BOT",)
+# Elo mínimo de ambos jugadores.
+MIN_ELO = 2200
+# Fracción de las partidas que pasan los filtros que se analizan.
+GAME_SAMPLE_RATE = 0.25
 # Pico en 1500: probablemente jugadores nuevos con la calificación inicial.
 EXCLUDED_MOVER_ELOS = (1500,)
 
@@ -28,23 +37,40 @@ PROGRESS_EVERY = 10_000
 
 
 def read_games(path):
+    """Separa el PGN en partidas sin analizar las jugadas: (cabeceras, texto)."""
     with open(path, "rb") as raw:
         reader = zstandard.ZstdDecompressor().stream_reader(raw)
-        text = io.TextIOWrapper(reader, encoding="utf-8")
-        while (game := chess.pgn.read_game(text)) is not None:
-            yield game
+        headers, lines = {}, []
+        for line in io.TextIOWrapper(reader, encoding="utf-8"):
+            if line.startswith("[Event ") and lines:
+                yield headers, "".join(lines)
+                headers, lines = {}, []
+            if line.startswith("["):
+                key, _, value = line.strip()[1:-1].partition(" ")
+                headers[key] = value.strip('"')
+            lines.append(line)
+        if lines:
+            yield headers, "".join(lines)
 
 
 def _parse_elo(value):
     return int(value) if value and value.isdigit() else None
 
 
-def _discard_reason(game):
-    headers = game.headers
+def _header_discard_reason(headers, min_elo):
     if any(event in headers.get("Event", "") for event in EXCLUDED_EVENTS):
         return "bullet"
-    if _parse_elo(headers.get("WhiteElo")) is None or _parse_elo(headers.get("BlackElo")) is None:
+    if headers.get("WhiteTitle") in EXCLUDED_TITLES or headers.get("BlackTitle") in EXCLUDED_TITLES:
+        return "bot"
+    elos = (_parse_elo(headers.get("WhiteElo")), _parse_elo(headers.get("BlackElo")))
+    if None in elos:
         return "sin_elo"
+    if min(elos) < min_elo:
+        return "elo_bajo"
+    return None
+
+
+def _game_discard_reason(game):
     if game.errors:
         return "error_pgn"
     if game.next() is None:
@@ -52,14 +78,18 @@ def _discard_reason(game):
     return None
 
 
-def transform_data(games, positions_per_game=POSITIONS_PER_GAME,
-                   random_state=RANDOM_STATE, max_games=None):
+def transform_data(games, positions_per_game=POSITIONS_PER_GAME, min_elo=MIN_ELO,
+                   game_sample_rate=GAME_SAMPLE_RATE, random_state=RANDOM_STATE,
+                   max_games=None):
     rng = np.random.default_rng(random_state)
     counters = {
         "partidas_leidas": 0,
         "partidas_usadas": 0,
         "bullet": 0,
+        "bot": 0,
         "sin_elo": 0,
+        "elo_bajo": 0,
+        "fuera_de_muestra": 0,
         "error_pgn": 0,
         "sin_jugadas": 0,
         "subpromociones": 0,
@@ -69,7 +99,7 @@ def transform_data(games, positions_per_game=POSITIONS_PER_GAME,
     legal_moves, legal_capture, legal_counts = [], [], []
     started = time.perf_counter()
 
-    for game in games:
+    for headers, pgn in games:
         if max_games is not None and counters["partidas_leidas"] >= max_games:
             break
         counters["partidas_leidas"] += 1
@@ -80,7 +110,16 @@ def transform_data(games, positions_per_game=POSITIONS_PER_GAME,
                 f"({time.perf_counter() - started:.0f} s)"
             )
 
-        reason = _discard_reason(game)
+        reason = _header_discard_reason(headers, min_elo)
+        if reason:
+            counters[reason] += 1
+            continue
+        # Solo se sortea con muestreo para que con 1.0 los resultados no cambien.
+        if game_sample_rate < 1 and rng.random() >= game_sample_rate:
+            counters["fuera_de_muestra"] += 1
+            continue
+        game = chess.pgn.read_game(io.StringIO(pgn))
+        reason = _game_discard_reason(game)
         if reason:
             counters[reason] += 1
             continue

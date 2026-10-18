@@ -1,10 +1,18 @@
+import functools
+import io
+
 import chess
+import chess.pgn
 import numpy as np
 import pytest
 import zstandard
 
-from etlProcess import load_data, read_games, save_data, split_data, transform_data
+from etlProcess import load_data, read_games, save_data, split_data
+from etlProcess import transform_data as etl_transform_data
 from preprocessing import decode_move
+
+# Sin filtro de Elo ni muestreo, para no depender de la configuración del conjunto vigente.
+transform_data = functools.partial(etl_transform_data, min_elo=0, game_sample_rate=1.0)
 
 PGN = """[Event "Rated Blitz game"]
 [WhiteElo "1510"]
@@ -150,3 +158,62 @@ def test_excluye_posiciones_de_jugadores_con_elo_1500(tmp_path):
     assert counters["posiciones"] == 2
     assert data["ply"].tolist() == [1, 3]
     assert set(data["elo"].tolist()) == {1600}
+
+
+def test_read_games_separa_cabeceras_sin_analizar_jugadas(pgn_path):
+    games = list(read_games(pgn_path))
+    assert len(games) == 5
+    headers, pgn = games[3]
+    assert headers == {
+        "Event": "Rated Classical game",
+        "WhiteElo": "1800",
+        "BlackElo": "1750",
+        "Result": "0-1",
+    }
+    moves = [move.uci() for move in chess.pgn.read_game(io.StringIO(pgn)).mainline_moves()]
+    assert moves == USED_GAMES[1][2]
+
+
+def test_filtro_de_elo_minimo_de_ambos_jugadores(pgn_path):
+    data, counters = transform_data(read_games(pgn_path), positions_per_game=100, min_elo=1700)
+    assert counters["partidas_usadas"] == 1
+    assert counters["elo_bajo"] == 2
+    assert counters["bullet"] == 1
+    assert counters["sin_elo"] == 1
+    assert counters["posiciones"] == 8
+    assert set(data["elo"].tolist()) == {1800, 1750}
+
+
+LICHESS_GAME = """[Event "Rated Blitz game"]
+[Site "https://lichess.org/abcdefgh"]
+[WhiteElo "2300"]
+[BlackElo "2250"]
+[Result "1-0"]
+[TimeControl "180+0"]
+
+1. e4 { [%eval 0.2] [%clk 0:03:00] } 1... c5 { [%eval 0.3] [%clk 0:03:00] } 2. Nf3 { [%clk 0:02:59] } 1-0
+
+"""
+
+
+def test_muestreo_de_partidas_reproducible(tmp_path):
+    path = tmp_path / "recientes.pgn.zst"
+    path.write_bytes(zstandard.ZstdCompressor().compress((LICHESS_GAME * 40).encode("utf-8")))
+
+    data, counters = transform_data(read_games(path), game_sample_rate=0.5)
+    again, _ = transform_data(read_games(path), game_sample_rate=0.5)
+
+    assert 0 < counters["partidas_usadas"] < 40
+    assert counters["partidas_usadas"] + counters["fuera_de_muestra"] == 40
+    assert counters["posiciones"] == 3 * counters["partidas_usadas"]
+    for key in data:
+        assert np.array_equal(data[key], again[key])
+
+
+def test_excluye_partidas_de_cuentas_bot(tmp_path):
+    bot_game = LICHESS_GAME.replace('[WhiteElo "2300"]', '[WhiteTitle "BOT"]\n[WhiteElo "2300"]')
+    path = tmp_path / "bots.pgn.zst"
+    path.write_bytes(zstandard.ZstdCompressor().compress((bot_game + LICHESS_GAME).encode("utf-8")))
+    _, counters = transform_data(read_games(path))
+    assert counters["bot"] == 1
+    assert counters["partidas_usadas"] == 1

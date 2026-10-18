@@ -1,0 +1,570 @@
+\documentclass[a4paper,12pt,twocolumn]{article}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usepackage{anyfontsize}
+\usepackage{sectsty}
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[left=2.54cm,right=2.54cm,top=2.54cm,bottom=2.54cm, headheight=28pt]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{amsfonts}
+\usepackage{mathtools}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{multicol}
+\usepackage{balance}
+\usepackage[font=footnotesize]{caption}
+\usepackage[export]{adjustbox}
+\usepackage{subcaption}
+\usepackage{wrapfig}
+\usepackage{float}
+\usepackage{url}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{gensymb}
+\usepackage{setspace}
+\usepackage{chessboard}
+\usepackage{array}
+\usepackage{extramarks}
+\usepackage{xurl}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage[backend=bibtex, style=numeric]{biblatex}
+\addbibresource{referencias.bib}
+
+\hypersetup{
+	colorlinks=true,
+	linkcolor=AirForceBlue,
+	filecolor=green,
+	citecolor = blue,
+	urlcolor=blue,
+}
+
+\definecolor{skyblue}{RGB}{122,177,226}
+\definecolor{daphne}{RGB}{51,118,185}
+\definecolor{AirForceBlue}{RGB}{21,58,89}
+\definecolor{midnight}{RGB}{18,34,62}
+\setlength{\parindent}{0pt}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\scriptsize \nouppercase{\firstleftmark}}
+\rhead{\scriptsize \nouppercase{\firstrightmark}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{1pt}
+
+\lstdefinestyle{pythonish}{
+	basicstyle=\ttfamily\small,
+	language=python,
+	numberstyle=\tiny\color{gray},
+	numbers=left,
+	stepnumber=1,
+	numbersep=10pt,
+	tabsize=4,
+	showspaces=false,
+	showstringspaces=false,
+	breaklines=true,
+	frame=single,
+	rulecolor=\color{black},
+	showtabs=false,
+	captionpos=b,
+	keywordstyle=\color{blue},
+	commentstyle=\color[HTML]{8a8b91},
+	backgroundcolor=\color[rgb]{0.964,0.964,0.964},
+	stringstyle=\color[rgb]{0.133,0.545,0.133},
+	literate=
+	{á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+	{Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+	{ü}{{\"u}}1 {Ü}{{\"U}}1 {ñ}{{\~n}}1 {Ñ}{{\~N}}1
+	{¿}{{\textquestiondown}}1 {¡}{{\textexclamdown}}1
+	{«}{{\guillemotleft}}1 {»}{{\guillemotright}}1
+	{×}{{$\times$}}1 {→}{{$\rightarrow$}}1 {↔}{{$\leftrightarrow$}}1 {—}{{--}}1
+}
+
+\renewcommand{\labelitemi}{$\bullet$}
+\pagenumbering{gobble}
+\renewcommand{\arraystretch}{1.1}
+\raggedbottom
+
+\title{Reporte de implementación.}
+\author{Mauricio Olguín Sánchez - A01711522}
+
+\begin{document}
+
+\begin{titlepage}
+    \thispagestyle{empty}
+
+    \begin{tikzpicture}[remember picture, overlay]
+        \fill[black!2]
+        (current page.south west) rectangle (current page.north east);
+
+        \fill[AirForceBlue]
+        (current page.north west) rectangle
+        ([xshift=\paperwidth,yshift=-1.2cm]current page.north west);
+
+        \fill[skyblue]
+        ([xshift=-1.5cm,yshift=-1.2cm]current page.north east)
+        -- ([xshift=-5cm,yshift=-1.2cm]current page.north east)
+        -- ([xshift=-2.5cm,yshift=-4cm]current page.north east)
+        -- ([xshift=1.5cm,yshift=-4cm]current page.north east)
+        -- cycle;
+
+        \fill[daphne]
+        ([yshift=1.5cm]current page.south west)
+        rectangle
+        ([xshift=\paperwidth,yshift=1.9cm]current page.south west);
+    \end{tikzpicture}
+
+    \vspace*{1.5cm}
+
+    \begin{center}
+        \includegraphics[width=0.22\textwidth]{logo_tec.png}
+
+        \vspace{0.4cm}
+
+        {\Large\bfseries Tecnológico de Monterrey}
+
+        \vspace{0.3cm}
+
+        {\large Inteligencia artificial avanzada para la ciencia de datos}
+    \end{center}
+
+    \vfill
+
+    \begin{center}
+        {\color{AirForceBlue}
+        \fontsize{28}{32}\selectfont
+        \bfseries Reporte}
+
+        \vspace{0.7cm}
+
+        {\color{daphne}
+        \fontsize{17}{21}\selectfont
+        Predicción de jugadas de ajedrez\\
+        a partir de la posición del tablero\\
+        con redes neuronales convolucionales}
+
+        \vspace{1.2cm}
+
+        \rule{0.55\textwidth}{1pt}
+
+        \vspace{0.8cm}
+
+        {\large
+        \textbf{Mauricio Olguín Sánchez}\\
+        A01711522}
+    \end{center}
+
+    \vfill
+
+    \begin{center}
+        {\large Octubre 2026}
+    \end{center}
+\end{titlepage}
+
+\onecolumn
+\pagenumbering{roman}
+\thispagestyle{plain}
+\tableofcontents
+\twocolumn
+\pagenumbering{arabic}
+
+% =====================================================================
+\section{Introducción}
+
+\subsection{Problema y objetivo}
+
+El objetivo de este proyecto es construir, con técnicas de \textit{deep learning}, un modelo que juegue ajedrez: que, dada una posición del tablero, elija una jugada.
+\newline
+Para lograrlo, el modelo aprende de partidas reales. Planteé el problema como una \textbf{clasificación multiclase supervisada}, con el mismo flujo de una red convolucional para Fashion MNIST, solo que con otro tipo de imagen y muchas más clases. El tablero se trata como una imagen pequeña: una cuadrícula de $8\times8$ casillas con varios canales, donde cada canal indica dónde están las piezas de un tipo y color. La red recibe esa imagen y produce, con una capa \textit{softmax}, una probabilidad para cada jugada posible. La etiqueta de cada ejemplo es la jugada que de verdad se jugó en esa posición, y el modelo juega eligiendo la jugada más probable entre las legales.
+\newline
+Como aprende de jugadores de nivel medio, se espera que juegue parecido a ellos y no como un motor de ajedrez. Por eso, la primera forma de evaluarlo es medir qué tan seguido elige la jugada que hizo la persona.
+
+\subsection{Alcance}
+
+\begin{itemize}[leftmargin=*]
+	\item \textbf{Núcleo:} una red que, a partir de una posición, elige la jugada. Se entrena con partidas de Lichess, también aprende a jugar la apertura y se evalúa con la precisión \textit{top-k}.
+	\item \textbf{Fuera de alcance:} aprendizaje por refuerzo, auto-juego y búsqueda MCTS. Quedan como trabajo futuro.
+\end{itemize}
+
+% =====================================================================
+\section{El ajedrez en este proyecto}
+
+Esta sección resume lo que hace falta saber de ajedrez para entender el resto del reporte: cómo es el tablero, qué reglas afectan la forma en que represento las posiciones y las jugadas, y cómo se escriben las partidas.
+
+\subsection{Tablero y piezas}
+
+El tablero tiene $8\times8$ casillas. Las columnas se nombran de la \textit{a} a la \textit{h} y las filas del 1 al 8, así que cada casilla tiene un nombre como e4. Las blancas empiezan en las filas 1 y 2 y las negras en las filas 7 y 8 (figura~\ref{fig:tablero-inicial}).
+\newline
+Cada jugador tiene 16 piezas: un rey, una dama, dos torres, dos alfiles, dos caballos y ocho peones. La torre se mueve en línea recta, el alfil en diagonal, la dama en ambas direcciones, el rey una casilla en cualquier dirección y el caballo en forma de «L», saltando sobre las demás piezas. El peón avanza una casilla (dos en su primer movimiento) y captura en diagonal. Gana quien da \textbf{jaque mate}: atacar al rey rival de modo que no tenga forma de escapar.
+
+\begin{figure}[H]
+	\centering
+	\chessboard[setfen=rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1,
+		showmover=false, boardfontsize=17pt, labelfontsize=8pt,
+		pgfstyle=straightmove, arrow=to, linewidth=0.25ex, color=daphne,
+		markmoves={e2-e4}]
+	\caption{Posición inicial. La flecha muestra la jugada 1.e4.}
+	\label{fig:tablero-inicial}
+\end{figure}
+
+Para el análisis uso el valor convencional de las piezas: peón 1, caballo 3, alfil 3, torre 5 y dama 9. El rey no tiene valor porque no se puede capturar.
+
+\subsection{Reglas especiales}
+
+Algunas reglas dependen de algo más que la posición de las piezas, y por eso la representación del tablero (sección~\ref{sec:etl}) guarda información adicional:
+\begin{itemize}[leftmargin=*]
+	\item \textbf{Enroque:} el rey se mueve dos casillas hacia una torre y la torre salta al otro lado del rey. Solo se permite si ninguno de los dos se ha movido antes, por lo que hay que guardar los \textbf{derechos de enroque} de cada jugador.
+	\item \textbf{Captura al paso:} si un peón avanza dos casillas y queda junto a un peón rival, este puede capturarlo como si hubiera avanzado una sola, pero únicamente en la jugada inmediata. Por eso guardo la columna en la que esa captura es posible.
+	\item \textbf{Promoción:} el peón que llega a la última fila se convierte en otra pieza; casi siempre en dama.
+	\item \textbf{Jaque y tablas:} un jugador no puede dejar a su rey en jaque. La partida termina en tablas por ahogado (no hay jugadas legales sin estar en jaque), por repetición, por la regla de los 50 movimientos, por material insuficiente o por acuerdo.
+\end{itemize}
+
+\subsection{Cómo se escriben las posiciones y las partidas}
+
+\begin{itemize}[leftmargin=*]
+	\item \textbf{SAN} (notación algebraica estándar): la forma habitual de escribir una jugada, con la letra de la pieza en inglés y la casilla de destino, por ejemplo \texttt{Nf3} (caballo a f3) o \texttt{e4} (peón a e4). Es la notación de los archivos de Lichess.
+	\item \textbf{UCI}: la jugada como casilla de origen y de destino, por ejemplo \texttt{g1f3}. Es la base de mi etiqueta (sección~\ref{sec:etl}).
+	\item \textbf{FEN}: una línea de texto que describe una posición completa: piezas, a quién le toca, derechos de enroque, captura al paso y contadores. La posición inicial es:\\ {\footnotesize\texttt{rnbqkbnr/pppppppp/8/8/8/8/\allowbreak PPPPPPPP/RNBQKBNR w KQkq - 0 1}}.
+	\item \textbf{PGN}: el formato de archivo de las partidas. Tiene encabezados (jugadores, Elo, tipo de partida, resultado) seguidos de las jugadas en SAN, y admite comentarios entre llaves.
+\end{itemize}
+
+\subsection{Jugadas, \textit{plies} y fases de la partida}
+
+En ajedrez, una «jugada» numerada incluye el movimiento de las blancas y la respuesta de las negras. En este reporte cuento \textbf{\textit{plies}} (medias jugadas): cada movimiento de un solo jugador es un \textit{ply}, así que la posición inicial es el \textit{ply} 0.
+\newline
+Una partida suele dividirse en tres fases: la \textbf{apertura}, en la que se desarrollan las piezas y muchos jugadores repiten secuencias conocidas; el \textbf{medio juego}; y el \textbf{final}, cuando quedan pocas piezas. No existe una frontera única entre fases; la que uso la defino en el análisis exploratorio (sección~\ref{sec:eda}).
+
+\subsection{Nivel de los jugadores y ritmo de juego}
+
+Lichess califica a cada jugador con un sistema de la familia Elo, y los archivos guardan esa calificación en los encabezados \texttt{WhiteElo} y \texttt{BlackElo}. En estos sistemas lo que importa es la diferencia entre dos jugadores: mientras mayor es, más probable es que gane el de mayor calificación. En este reporte llamo «Elo» a esa calificación.
+\newline
+Lichess también clasifica cada partida por su ritmo, según el tiempo disponible: Bullet (el más rápido), Blitz, Rápidas y Clásicas. El ritmo importa porque con muy poco tiempo las decisiones son más impulsivas.
+
+% =====================================================================
+\section{Antecedentes}
+
+Antes de diseñar el modelo investigué otras implementaciones de este mismo problema. Al leer el artículo base~\cite{arsalan2024} vi que su métrica, un $R^2$ sobre la diferencia de evaluación, no dice cuántas veces el modelo elige la jugada correcta. De ahí surgió investigar también cómo evaluar un modelo que aprende de jugadas humanas. La tabla~\ref{tab:antecedentes} resume los trabajos que influyeron en mis decisiones. Sus cifras no son comparables entre sí, porque cada uno usa datos, objetivos y criterios de acierto diferentes.
+
+\begin{table*}[t]
+	\centering
+	\footnotesize
+	\begin{tabular}{L{2.9cm}L{6.2cm}L{5.4cm}}
+		\hline
+		Trabajo & Resultado principal & Diferencia con mi trabajo \\
+		\hline
+		Arsalan y Soeparno~\cite{arsalan2024} & CNN en Keras sobre 3,862 partidas de grandes maestros de Lichess. Regresión de la diferencia de evaluación; $R^2 = 0.175$ en el mejor modelo y 4 de 28 problemas tácticos resueltos. & Es el artículo base. Codifica cada pieza con un entero, lo que impone un orden sin sentido entre piezas; yo uso un canal por pieza. No tiene conjunto de prueba independiente y reporta el mejor de 400 modelos; yo reporto la media entre semillas. Ellos hacen regresión; yo clasifico la jugada. \\
+		McIlroy-Young et al.\ (Maia)~\cite{mcilroyyoung2020} & Red residual entrenada con unos 12 millones de partidas de Lichess por modelo. Acierta entre 46\% y más de 52\% de las jugadas humanas. & De su protocolo tomo la evaluación solo entre jugadas legales, la división por partida y la exclusión de las partidas Bullet. \\
+		Soldera y Pedrini~\cite{soldera2026} & CNN con entrada $8\times8\times12$ y salida separada en pieza y destino; 68.5\% con un híbrido con Stockfish. & Usa la misma idea de un canal por pieza. Su criterio de acierto es más laxo (cualquier jugada humana registrada para la posición) y solo usan una apertura. \\
+		Bertram et al.~\cite{bertram2024} & Red para una variante de ajedrez con información imperfecta; tablero como 12 planos de $8\times8$. Usar casi solo convoluciones rindió mejor que añadir capas densas, y preentrenar con autoencoders no mejoró el resultado. & Apoya la representación con un canal por pieza. Su resultado con autoencoders es un riesgo conocido si uso un autoencoder como base del modelo. \\
+		\hline
+	\end{tabular}
+	\caption{Trabajos que influyeron en las decisiones del proyecto. Las métricas pertenecen a problemas y protocolos distintos.}
+	\label{tab:antecedentes}
+\end{table*}
+
+Estos trabajos muestran que predecir la jugada exacta es difícil: Maia, con una red grande y millones de partidas, acierta alrededor de la mitad. Como sus cifras usan otros datos y criterios, no compararé mi modelo directamente con ellas, sino con \textbf{líneas base calculadas con mis propios datos} (sección~\ref{sec:lineas-base}). Además, Maia descarta las primeras 10 jugadas de cada partida; yo no, porque quiero que el modelo también sepa jugar la apertura. Por eso la incluyo y reporto el resultado por fase de la partida.
+
+% =====================================================================
+\section{Datos y proceso de ETL}
+\label{sec:etl}
+
+\subsection{Sobre la base de datos seleccionada}
+
+Utilicé la \textit{Lichess Open Database}~\cite{lichessDatabase}, que publica cada mes todas las partidas jugadas en Lichess con licencia CC0. Cada archivo está en formato PGN comprimido con Zstandard (\texttt{.pgn.zst}). Los meses recientes pesan alrededor de 30 GB comprimidos cada uno, mientras que los primeros meses de la base son mucho más pequeños.
+\newline
+Para construir y depurar el \textit{pipeline} elegí el archivo de marzo de 2013 (\path{lichess_db_standard_rated_2013-03.pgn.zst}): pesa 22.5 MB comprimido y 122.5 MB descomprimido, y contiene 158,635 partidas con calificación (\textit{rated}). Cada partida trae encabezados con el tipo de evento, el Elo de ambos jugadores, el resultado, el control de tiempo y la forma en que terminó, seguidos de las jugadas en notación algebraica.
+
+\begin{table}[H]
+	\centering
+	\footnotesize
+	\begin{tabular}{L{4.6cm}r}
+		\hline
+		Característica & Valor \\
+		\hline
+		Partidas & 158,635 \\
+		Partidas Bullet (incluye torneos) & 43,548 \\
+		Partidas Blitz (fuera de torneos) & 59,578 \\
+		Partidas clásicas (fuera de torneos) & 54,107 \\
+		Victorias de las blancas & 80,486 \\
+		Victorias de las negras & 72,796 \\
+		Tablas & 5,353 \\
+		Terminadas normalmente & 110,271 \\
+		Terminadas por tiempo & 48,364 \\
+		Elo de las blancas (mín.) & 802 \\
+		Elo de las blancas (media) & 1,607 \\
+		Elo de las blancas (máx.) & 2,412 \\
+		\hline
+	\end{tabular}
+	\caption{Características del archivo de marzo de 2013, calculadas leyendo los encabezados de todas las partidas.}
+	\label{tab:datos-2013-03}
+\end{table}
+
+Este mes sirvió para construir y probar el \textit{pipeline}, pero tiene una limitación clara: casi no hay jugadores de nivel muy alto. El conjunto definitivo usará las partidas más recientes de Lichess; como cada mes pesa alrededor de 30 GB, se descargarán y procesarán de uno en uno.
+
+\subsection{Proceso de ETL}
+
+Para leer las partidas y generar las jugadas legales utilicé la biblioteca \texttt{chess}~\cite{pythonChess}.
+
+\subsubsection{\textit{Extraction}}
+
+El archivo se lee en \textit{streaming}: se descomprime por bloques y se procesa una partida a la vez. Así nunca se guarda el PGN descomprimido en disco ni se carga completo en memoria, lo que será necesario con los meses recientes.
+
+\subsubsection{\textit{Transforming}}
+
+\paragraph{Filtros}
+
+Descarté las partidas Bullet, porque con tan poco tiempo las jugadas son más impulsivas y menos representativas. También descarté las partidas en las que falta el Elo de alguno de los dos jugadores, porque lo necesito para analizar los resultados por nivel. No encontré partidas con errores de lectura ni partidas sin jugadas.
+\newline
+Además, a partir del análisis exploratorio (sección~\ref{sec:eda}), omití las posiciones en las que el jugador que mueve tiene un Elo de exactamente 1,500: eran 28,541 posiciones (2.1\%), un pico que probablemente corresponde a jugadores nuevos que conservan la calificación inicial. Este filtro es por posición, no por partida: las jugadas del rival se conservan.
+
+\begin{table}[H]
+	\centering
+	\footnotesize
+	\begin{tabular}{lr}
+		\hline
+		Paso & Partidas \\
+		\hline
+		Partidas leídas & 158,635 \\
+		Descartadas por ser Bullet & 43,548 \\
+		Descartadas por no tener Elo & 290 \\
+		\textbf{Partidas utilizadas} & \textbf{114,797} \\
+		\hline
+	\end{tabular}
+	\caption{Partidas descartadas en cada filtro.}
+	\label{tab:filtros}
+\end{table}
+
+\paragraph{El tablero visto desde quien mueve}
+
+Para que la red no tenga que aprender dos veces lo mismo (una vez para las blancas y otra para las negras), represento siempre la posición \textbf{desde el punto de vista del jugador que mueve}. Cuando mueven las negras, volteo el tablero verticalmente e intercambio los colores, de modo que el jugador que mueve siempre aparece abajo.
+\newline
+Este punto se relaciona con el aumento de datos, cuyas transformaciones deben respetar la lógica del problema. En ajedrez, voltear el tablero de izquierda a derecha \textbf{no} es válido en general, porque el rey y la dama no son simétricos y el enroque cambiaría de sentido. La única simetría que se puede usar sin cuidado especial es la de voltear verticalmente e intercambiar los colores.
+
+\paragraph{Representación del tablero}
+
+La red recibe cada posición como una «imagen» de $8\times8$ con 17 canales binarios (tabla~\ref{tab:canales}): uno por cada tipo de pieza y color, más los derechos de enroque y la captura al paso.
+
+\begin{table}[H]
+	\centering
+	\footnotesize
+	\begin{tabular}{lp{5.2cm}}
+		\hline
+		Canales & Contenido \\
+		\hline
+		0--5 & Peones, caballos, alfiles, torres, dama y rey del jugador que mueve \\
+		6--11 & Las mismas piezas del rival \\
+		12--15 & Derechos de enroque (corto y largo de cada jugador), canal completo en 1 o en 0 \\
+		16 & Casilla de captura al paso, si existe \\
+		\hline
+	\end{tabular}
+	\caption{Canales de la representación \textit{one-hot} del tablero.}
+	\label{tab:canales}
+\end{table}
+
+Para compararme con el artículo base también genero su versión ordinal: un solo canal donde cada pieza vale de 1 a 6 y el signo indica si es del jugador que mueve o del rival.
+
+\paragraph{Representación de la jugada}
+
+La etiqueta es la jugada que se jugó, codificada como un número entre 0 y 4,095:
+\begin{equation*}
+	\text{clase} = 64 \times \text{origen} + \text{destino},
+\end{equation*}
+donde origen y destino son las casillas numeradas de 0 (a1) a 63 (h8), recorriendo cada fila de izquierda a derecha, ya en la orientación de quien mueve. Por ejemplo, 1.e4 (de e2, casilla 12, a e4, casilla 28) es la clase $64\times12+28=796$. Gracias a la orientación, 1.e4 de las blancas y 1\dots e5 de las negras tienen la misma clase. El enroque queda representado como un movimiento del rey de dos casillas. Las promociones se representan como promoción a dama; las 109 posiciones en las que se jugó una promoción a otra pieza se omitieron.
+
+\paragraph{Jugadas legales}
+
+Para cada posición guardo también la lista de sus jugadas legales y el valor de la pieza capturada por cada una (peón 1, caballo y alfil 3, torre 5, dama 9). Esto permite descartar las jugadas ilegales al evaluar el modelo y calcular las líneas base sin tener que reconstruir los tableros.
+
+\paragraph{Muestreo de posiciones}
+
+Las posiciones consecutivas de una misma partida se parecen mucho entre sí, así que no tiene sentido usar todas. De cada partida tomé al azar 12 posiciones (o todas, si la partida es más corta), con una semilla fija para que el resultado sea reproducible. Después de omitir las posiciones con Elo de 1,500 y las subpromociones, el resultado fue de \textbf{1,336,913 posiciones}.
+
+\subsubsection{\textit{Loading}}
+
+El conjunto procesado se guarda en disco para no repetir la transformación cada vez que se entrena.
+\newline
+La división en entrenamiento, validación y prueba se hace \textbf{por partida y no por posición}. Si se dividiera por posición, posiciones casi idénticas de la misma partida quedarían en entrenamiento y en prueba, y las métricas saldrían infladas por una fuga de datos. Mezclé las partidas con la semilla 42 y asigné 80\%, 10\% y 10\% de ellas a cada conjunto (tabla~\ref{tab:split}). Ninguna partida aparece en más de un conjunto.
+
+\begin{table}[H]
+	\centering
+	\footnotesize
+	\begin{tabular}{lrr}
+		\hline
+		Conjunto & Partidas & Posiciones \\
+		\hline
+		\textit{Train} & 91,775 & 1,069,606 \\
+		\textit{Validation} & 11,471 & 133,551 \\
+		\textit{Test} & 11,473 & 133,756 \\
+		\hline
+	\end{tabular}
+	\caption{División por partida con semilla 42. Suman 114,719 partidas porque en 78 partidas se omitieron todas las posiciones muestreadas.}
+	\label{tab:split}
+\end{table}
+
+El conjunto de \textit{test} no interviene en ninguna decisión: la elección de arquitecturas e hiperparámetros se hará con \textit{validation}, y \textit{test} se usará una sola vez al final.
+
+\subsubsection{Validación del proceso}
+
+Como un error en la codificación invalidaría todos los resultados, escribí pruebas automáticas antes de procesar los datos. Así, cualquier cambio posterior que rompa la codificación se detecta de inmediato. Entre otras cosas, comprueban que la posición inicial tenga 20 jugadas legales, que cada jugada se pueda codificar y decodificar sin pérdida (incluidos el enroque, la captura al paso y la promoción), que una posición con negras y su versión espejada tengan la misma codificación, que las etiquetas coincidan con las jugadas reales de partidas de ejemplo y que la división no repita partidas entre conjuntos.
+
+% =====================================================================
+\section{Análisis exploratorio de los datos}
+\label{sec:eda}
+
+Antes de entrenar revisé el conjunto procesado (1,336,913 posiciones) para conocer a los jugadores, el momento de la partida en que ocurre cada posición, las jugadas que se eligen y qué tanto se repiten las posiciones entre partidas.
+
+\subsection{Nivel de los jugadores}
+
+El Elo del jugador que mueve va de 1,254 a 1,902 en el 90\% central de las posiciones, con mediana de 1,574 y máximo de 2,359 (figura~\ref{fig:eda-elo}). Casi no hay jugadores de nivel muy alto.
+\newline
+En la primera versión de este histograma apareció un pico en exactamente 1,500, con el 2.1\% de las posiciones. Probablemente son jugadores nuevos que conservan la calificación inicial, y en ese caso su Elo todavía no refleja su nivel, así que omití esas posiciones en el ETL. No apliqué ningún otro filtro de Elo: prefiero conservar todos los niveles y, al evaluar, reportar los resultados por rango.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\columnwidth]{figuras/eda_elo.png}
+	\caption{Elo del jugador que mueve, ya sin las posiciones con Elo de 1,500.}
+	\label{fig:eda-elo}
+\end{figure}
+
+\subsection{Momento de la partida y fases}
+
+Las posiciones se concentran en los primeros \textit{plies} y su frecuencia baja conforme avanza la partida, porque muchas partidas terminan antes (figura~\ref{fig:eda-ply}); el \textit{ply} promedio es 33.9. El 78.8\% de las posiciones ocurre después del \textit{ply} 10.
+\newline
+Para analizar los resultados por fase definí tres grupos. El \textbf{final} son las posiciones con 12 piezas o menos, contando a los reyes; la \textbf{apertura}, el resto de las posiciones antes del \textit{ply} 20 (diez jugadas de cada bando); y el \textbf{medio juego}, todo lo demás. Con esta definición, el 37.0\% de las posiciones es de apertura, el 55.6\% de medio juego y el 7.4\% de final (figura~\ref{fig:eda-fases}). Como el final tiene pocas posiciones, sus resultados tendrán más incertidumbre.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\columnwidth]{figuras/eda_ply.png}
+	\caption{\textit{Ply} en el que ocurre cada posición muestreada.}
+	\label{fig:eda-ply}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.85\columnwidth]{figuras/eda_fases.png}
+	\caption{Posiciones por fase de la partida.}
+	\label{fig:eda-fases}
+\end{figure}
+
+\subsection{Jugadas legales y la línea base del azar}
+
+Cada posición tiene en promedio \textbf{30.2 jugadas legales}, con un mínimo de 1 y un máximo de 113 (figura~\ref{fig:eda-legales}). El pico en 20 corresponde a la posición inicial y a otras posiciones de apertura muy parecidas. El 0.9\% de las posiciones tiene una sola jugada legal y el 5.1\%, cuatro o menos.
+\newline
+Si se elige una jugada legal al azar, se acierta el \textbf{6.0\%} de las veces en promedio. Es más que $1/30.2 \approx 3.3\%$ porque en las posiciones con pocas opciones, como las de jaque, el azar acierta mucho más. Esta es la primera línea base que el modelo debe superar.
+
+\begin{figure*}[t]
+	\centering
+	\includegraphics[width=\textwidth]{figuras/eda_jugadas_legales.png}
+	\caption{Izquierda: número de jugadas legales por posición. Derecha: acierto esperado al elegir una jugada legal al azar, por intervalo; encima de cada barra, el porcentaje de posiciones del intervalo.}
+	\label{fig:eda-legales}
+\end{figure*}
+
+\subsection{Las jugadas: clases, piezas y capturas}
+
+Solo aparecen 1,792 de las 4,096 clases posibles, porque muchas combinaciones de origen y destino no corresponden al movimiento de ninguna pieza. Además, las clases que sí aparecen están muy desbalanceadas. La figura~\ref{fig:eda-clases} ordena las jugadas de la más a la menos común y muestra qué porcentaje del total se acumula: las 68 jugadas más comunes ya son la mitad de todas las jugadas del conjunto, 329 son el 80\% y 955 el 95\%. Las otras 837 juntas apenas suman el 5\% restante. Esto significa que el modelo verá muchísimos ejemplos de unas pocas jugadas y muy pocos del resto.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\columnwidth]{figuras/eda_frecuencia_clases.png}
+	\caption{Porcentaje acumulado de jugadas al sumar las clases de la más a la menos común. Las líneas punteadas marcan cuántas clases hacen falta para cubrir el 50\%, el 80\% y el 95\% de las jugadas.}
+	\label{fig:eda-clases}
+\end{figure}
+
+La pieza que más se mueve es el peón (29.6\%), seguida del caballo (18.7\%) y el alfil (16.1\%); la dama, la torre y el rey se mueven entre el 10.7\% y el 13.0\% de las veces (figura~\ref{fig:eda-piezas}).
+\newline
+El 23.7\% de las jugadas son capturas (figura~\ref{fig:eda-capturas}). En el 73.1\% de las posiciones hay al menos una captura disponible, pero solo en el 27.8\% de ellas se juega la captura de mayor valor. Por eso espero que la línea base de «capturar la pieza más valiosa» sea débil: la mayoría de las veces los jugadores no capturan aunque puedan.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.85\columnwidth]{figuras/eda_pieza_movida.png}
+	\caption{Tipo de pieza que se mueve en cada jugada.}
+	\label{fig:eda-piezas}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=0.85\columnwidth]{figuras/eda_capturas.png}
+	\caption{Jugadas tranquilas y capturas, según el valor de la pieza capturada.}
+	\label{fig:eda-capturas}
+\end{figure}
+
+\subsection{Posiciones que se repiten entre partidas}
+
+Como incluí las aperturas, quise saber cuántas posiciones aparecen idénticas (mismas piezas, derechos de enroque y captura al paso) en dos o más partidas distintas. Se repiten porque muchos jugadores juegan las mismas aperturas, y eso significa que una parte de lo que aprenda el modelo en esas posiciones puede ser memoria.
+\newline
+El 17.7\% de las posiciones aparece en al menos dos partidas. Casi todas son de apertura: ahí se repite el 47.7\% de las posiciones, mientras que en el resto de la partida solo el 0.09\%. Por \textit{ply}, la posición inicial se repite siempre, en el \textit{ply} 4 el 95.1\%, en el \textit{ply} 10 el 29.8\% y desde el \textit{ply} 16 menos del 3\% (figura~\ref{fig:eda-repetidas}).
+\newline
+En esas posiciones repetidas, la jugada más frecuente se elige solo el 54.5\% de las veces; en la posición inicial, el 64.2\%. Es decir, en una misma posición distintos jugadores eligen jugadas distintas, y ningún modelo que solo vea el tablero puede acertar todas: en estas posiciones, el acierto \textit{top-1} tiene un techo cercano al 55\%.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\columnwidth]{figuras/eda_posiciones_repetidas.png}
+	\caption{Por \textit{ply}: porcentaje de posiciones que aparecen en dos o más partidas y techo del acierto \textit{top-1} en esas posiciones. Solo se grafican los \textit{plies} con al menos 100 posiciones.}
+	\label{fig:eda-repetidas}
+\end{figure}
+
+\subsection{Conclusiones del análisis}
+
+\begin{itemize}[leftmargin=*]
+	\item Omití las posiciones con Elo de exactamente 1,500 y no apliqué otro filtro de nivel.
+	\item Las fases quedan definidas por \textit{ply} (apertura antes del 20) y por número de piezas (final con 12 o menos), y reportaré los resultados de cada una por separado.
+	\item El modelo tiene que superar al azar (6.0\%) en todo el conjunto.
+	\item Casi la mitad de las posiciones de apertura se repite entre partidas, así que en la apertura también lo compararé con el «libro» (sección~\ref{sec:lineas-base}), que solo usa memoria.
+	\item En las posiciones repetidas, el acierto \textit{top-1} no puede pasar de alrededor del 55\%, porque los jugadores no coinciden entre sí.
+	\item La cola larga de clases y el bajo porcentaje de capturas de mayor valor indican que el modelo tendrá que aprender jugadas poco frecuentes y que una regla sencilla no bastará.
+\end{itemize}
+
+% =====================================================================
+\section{Metodología de evaluación}
+
+\subsection{Durante el entrenamiento}
+
+La red se entrena con la entropía cruzada categórica (\textit{sparse categorical crossentropy}), la pérdida para clasificación cuando las etiquetas son enteros. En cada época registro la pérdida y la precisión en entrenamiento y validación. Con \textit{ModelCheckpoint} guardo el modelo de menor pérdida en validación, de modo que el número de épocas no tiene que adivinarse de antemano.
+
+\subsection{Precisión \textit{top-k}}
+
+La métrica principal es la precisión \textit{top-1}: el porcentaje de posiciones en las que la jugada más probable del modelo es la que se jugó. También reporto \textit{top-3} y \textit{top-5} (si la jugada real está entre las tres o cinco más probables). Antes de calcularlas descarto las jugadas ilegales, porque en una partida nunca podrían elegirse. Como la red se entrena sin esa restricción, también mido qué porcentaje de sus primeras opciones es ilegal, para saber si aprendió las reglas.
+\newline
+La métrica principal se calcula sobre \textbf{todas} las posiciones, incluidas las de apertura. Además la desgloso por fase (apertura, medio juego y final). Solo como referencia, para compararme con el protocolo de Maia, también la calculo sin los primeros 10 \textit{plies}.
+
+\subsection{Líneas base}
+\label{sec:lineas-base}
+
+Todas las métricas se comparan con cuatro líneas base calculadas con los mismos datos:
+\begin{enumerate}[leftmargin=*]
+	\item una jugada legal al azar (6.0\% de acierto esperado);
+	\item la jugada legal más frecuente en el conjunto de entrenamiento;
+	\item la captura de mayor valor, si existe;
+	\item un «libro»: si la posición exacta aparece en entrenamiento, la jugada que más se jugó en ella. Esta línea base mide cuánto se puede acertar solo con memoria, sobre todo en la apertura, donde las mismas posiciones se repiten en muchas partidas.
+\end{enumerate}
+
+% =====================================================================
+\onecolumn
+\section{Códigos}
+
+Todos los códigos están en \url{https://github.com/TheSimpleMau/Portafolio-Implementacion-Deeplearning}. Aquí se incluyen los módulos principales hasta el momento.
+
+Codificación del tablero y de las jugadas.
+\lstinputlisting[style=pythonish]{../preprocessing.py}
+
+\newpage
+Proceso de ETL.
+\lstinputlisting[style=pythonish]{../etlProcess.py}
+
+\newpage
+Análisis exploratorio.
+\lstinputlisting[style=pythonish]{../eda.py}
+
+\newpage
+Gráficas.
+\lstinputlisting[style=pythonish]{../plotUtil.py}
+
+\clearpage
+\printbibliography[heading=bibintoc, title={Referencias}]
+
+\end{document}

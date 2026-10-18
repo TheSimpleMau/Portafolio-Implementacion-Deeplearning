@@ -84,16 +84,17 @@ def class_frequency(counts):
     ensure_graphics_directory()
     present = np.sort(counts[counts > 0])[::-1]
     cumulative = np.cumsum(present) / present.sum()
-    fig, left = plt.subplots(figsize=(6.5, 4.5))
-    left.plot(np.arange(1, len(present) + 1), present, color="steelblue")
-    left.set_yscale("log")
-    left.set_xlabel("Rango de la clase (de la más a la menos frecuente)")
-    left.set_ylabel("Posiciones (escala log)", color="steelblue")
-    right = left.twinx()
-    right.plot(np.arange(1, len(present) + 1), cumulative * 100, color="darkorange")
-    right.set_ylabel("Porcentaje acumulado", color="darkorange")
-    right.set_ylim(0, 100)
-    plt.title(f"Frecuencia de las {len(present):,} clases que aparecen")
+    plt.figure(figsize=(6.5, 4.5))
+    plt.plot(np.arange(1, len(present) + 1), cumulative * 100, color="steelblue")
+    for share in (0.5, 0.8, 0.95):
+        n_classes = np.searchsorted(cumulative, share) + 1
+        plt.plot([0, n_classes, n_classes], [share * 100, share * 100, 0], color="gray", linestyle="--")
+        plt.text(n_classes + 20, share * 100 - 6, f"{n_classes} jugadas: {share:.0%}")
+    plt.xlim(0, len(present))
+    plt.ylim(0, 102)
+    plt.xlabel("Jugadas distintas, de la más a la menos común")
+    plt.ylabel("% del total de jugadas")
+    plt.title("Pocas jugadas concentran casi todo")
     _save("eda_frecuencia_clases.png")
 
 

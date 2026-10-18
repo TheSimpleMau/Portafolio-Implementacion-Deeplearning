@@ -16,6 +16,8 @@ SUMMARY_PATH = "data/processed/positions_2013-03_resumen.json"
 
 POSITIONS_PER_GAME = 12
 EXCLUDED_EVENTS = ("Bullet",)
+# Pico en 1500: probablemente jugadores nuevos con la calificación inicial.
+EXCLUDED_MOVER_ELOS = (1500,)
 
 TRAIN_FRACTION = 0.8
 VAL_FRACTION = 0.1
@@ -61,6 +63,7 @@ def transform_data(games, positions_per_game=POSITIONS_PER_GAME,
         "error_pgn": 0,
         "sin_jugadas": 0,
         "subpromociones": 0,
+        "posiciones_elo_excluido": 0,
     }
     columns = {name: [] for name in ("squares", "castling", "ep", "move", "game_id", "ply", "elo")}
     legal_moves, legal_capture, legal_counts = [], [], []
@@ -97,7 +100,9 @@ def transform_data(games, positions_per_game=POSITIONS_PER_GAME,
         for ply, move in enumerate(moves):
             if ply in sampled:
                 index = encode_move(move, board.turn == chess.BLACK)
-                if index is None:
+                if elos[board.turn] in EXCLUDED_MOVER_ELOS:
+                    counters["posiciones_elo_excluido"] += 1
+                elif index is None:
                     counters["subpromociones"] += 1
                 else:
                     squares, castling, ep = encode_position(board)

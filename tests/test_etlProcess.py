@@ -7,14 +7,14 @@ from etlProcess import load_data, read_games, save_data, split_data, transform_d
 from preprocessing import decode_move
 
 PGN = """[Event "Rated Blitz game"]
-[WhiteElo "1500"]
+[WhiteElo "1510"]
 [BlackElo "1600"]
 [Result "1-0"]
 
 1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 1-0
 
 [Event "Rated Bullet game"]
-[WhiteElo "1500"]
+[WhiteElo "1510"]
 [BlackElo "1600"]
 [Result "1-0"]
 
@@ -35,7 +35,7 @@ PGN = """[Event "Rated Blitz game"]
 1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. O-O Nf6 0-1
 
 [Event "Rated Blitz game"]
-[WhiteElo "1500"]
+[WhiteElo "1510"]
 [BlackElo "1600"]
 [Result "1-0"]
 
@@ -44,7 +44,7 @@ PGN = """[Event "Rated Blitz game"]
 """
 
 USED_GAMES = [
-    (1500, 1600, ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6"]),
+    (1510, 1600, ["e2e4", "e7e5", "g1f3", "b8c6", "f1b5", "a7a6"]),
     (1800, 1750, ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "f8c5", "e1g1", "g8f6"]),
 ]
 
@@ -135,3 +135,18 @@ def test_split_por_partida():
 def test_split_rechaza_proporciones_invalidas():
     with pytest.raises(ValueError):
         split_data(np.arange(10), 0.8, 0.1, 0.2)
+
+
+def test_excluye_posiciones_de_jugadores_con_elo_1500(tmp_path):
+    pgn = (
+        '[Event "Rated Blitz game"]\n[WhiteElo "1500"]\n[BlackElo "1600"]\n[Result "1-0"]\n\n'
+        "1. e4 e5 2. Nf3 Nc6 1-0\n\n"
+    )
+    path = tmp_path / "elo1500.pgn.zst"
+    path.write_bytes(zstandard.ZstdCompressor().compress(pgn.encode("utf-8")))
+    data, counters = transform_data(read_games(path), positions_per_game=100)
+
+    assert counters["posiciones_elo_excluido"] == 2
+    assert counters["posiciones"] == 2
+    assert data["ply"].tolist() == [1, 3]
+    assert set(data["elo"].tolist()) == {1600}

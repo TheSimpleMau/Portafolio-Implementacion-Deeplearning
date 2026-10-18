@@ -4,16 +4,15 @@ import os
 import numpy as np
 
 import plotUtil
-from etlProcess import PROCESSED_PATH, load_data, split_data
+from etlProcess import PROCESSED_PATH, load_data
 from preprocessing import N_CLASSES
 
 SUMMARY_PATH = "graficas/eda_resumen.json"
 
-# Umbrales provisionales de fase; se ajustan después de ver las gráficas.
+# Umbrales de fase decididos con el EDA.
 OPENING_PLY = 20
 ENDGAME_PIECES = 12
 PHASE_NAMES = ("apertura", "medio juego", "final")
-SPLIT_NAMES = ("train", "val", "test")
 
 MAX_PLY_PLOT = 40
 MIN_POSITIONS_PER_PLY = 100
@@ -60,7 +59,7 @@ def position_keys(squares, castling, ep):
     return keys
 
 
-def book_moves(keys, move):
+def mode_moves(keys, move):
     """Jugada más frecuente de cada posición (por llave); -1 si la llave no aparece."""
     pairs = keys.astype(np.int64) * N_CLASSES + move
     unique_pairs, counts = np.unique(pairs, return_counts=True)
@@ -68,27 +67,26 @@ def book_moves(keys, move):
     order = np.lexsort((-counts, pair_keys))
     first = order[np.r_[True, np.diff(pair_keys[order]) != 0]]
 
-    book = np.full(keys.max() + 1, -1, dtype=np.int32)
-    book[pair_keys[first]] = unique_pairs[first] % N_CLASSES
-    return book
+    modes = np.full(keys.max() + 1, -1, dtype=np.int32)
+    modes[pair_keys[first]] = unique_pairs[first] % N_CLASSES
+    return modes
 
 
-def repeated_positions(keys, move, train_idx, eval_idx):
-    """Qué posiciones de evaluación ya estaban en train y cuánto acierta el «libro»."""
-    book = book_moves(keys[train_idx], move[train_idx])
-    book = np.pad(book, (0, keys.max() + 1 - len(book)), constant_values=-1)
-    predicted = book[keys[eval_idx]]
-    seen = predicted >= 0
-    hit = seen & (predicted == move[eval_idx])
-    return seen, hit
+def repeated_across_games(keys, game_id):
+    """True si la posición aparece en al menos dos partidas distintas."""
+    n_games = int(game_id.max()) + 1
+    key_game = np.unique(keys.astype(np.int64) * n_games + game_id)
+    games_per_key = np.bincount(key_game // n_games, minlength=keys.max() + 1)
+    return games_per_key[keys] > 1
 
 
 def accuracy_ceiling(keys, move):
-    """Por posición repetida: True si su jugada es la modal de esa posición (techo de top-1)."""
-    key_counts = np.bincount(keys)
-    repeated = key_counts[keys] > 1
-    is_mode = book_moves(keys, move)[keys] == move
-    return repeated, is_mode
+    """True si la jugada es la modal de su posición (techo de top-1 al ver solo el tablero)."""
+    return mode_moves(keys, move)[keys] == move
+
+
+def _share(values):
+    return round(float(values.mean()), 4) if len(values) else None
 
 
 def _rate_by_ply(ply, values, mask=None, max_ply=MAX_PLY_PLOT, min_positions=MIN_POSITIONS_PER_PLY):
@@ -104,11 +102,6 @@ def _rate_by_ply(ply, values, mask=None, max_ply=MAX_PLY_PLOT, min_positions=MIN
 def initial_graphs(data, summary_path=SUMMARY_PATH):
     plotUtil.ensure_graphics_directory()
     squares, move, ply, elo = data["squares"], data["move"], data["ply"], data["elo"]
-    splits = split_data(data["game_id"])
-    train_idx, val_idx, _ = splits
-    split_of = np.empty(len(move), dtype=np.int8)
-    for code, idx in enumerate(splits):
-        split_of[idx] = code
 
     n_legal = legal_counts(data["legal_offsets"])
     piece = moved_piece(squares, move)
@@ -117,8 +110,8 @@ def initial_graphs(data, summary_path=SUMMARY_PATH):
     captured = played_capture_value(move, data["legal_offsets"], data["legal_moves"], data["legal_capture"])
     best_capture = max_capture_value(data["legal_offsets"], data["legal_capture"])
     keys = position_keys(squares, data["castling"], data["ep"])
-    seen, book_hit = repeated_positions(keys, move, train_idx, val_idx)
-    repeated, is_mode = accuracy_ceiling(keys, move)
+    repeated = repeated_across_games(keys, data["game_id"])
+    is_mode = accuracy_ceiling(keys, move)
 
     plotUtil.elo_hist(elo)
     plotUtil.ply_hist(ply)
@@ -127,14 +120,13 @@ def initial_graphs(data, summary_path=SUMMARY_PATH):
     plotUtil.moved_piece_bar(piece)
     plotUtil.capture_bar(captured)
     plotUtil.phase_bar(phase, PHASE_NAMES)
-    plotUtil.split_comparison(elo, ply, phase, split_of, SPLIT_NAMES, PHASE_NAMES)
     plotUtil.repeated_positions_by_ply(
-        _rate_by_ply(ply[val_idx], seen),
-        _rate_by_ply(ply[val_idx], book_hit),
+        _rate_by_ply(ply, repeated),
         _rate_by_ply(ply, is_mode, repeated),
     )
 
     with_capture = best_capture > 0
+    opening = phase == 0
     summary = {
         "posiciones": int(len(move)),
         "legales_media": round(float(n_legal.mean()), 2),
@@ -151,20 +143,11 @@ def initial_graphs(data, summary_path=SUMMARY_PATH):
         "elige_captura_de_mayor_valor_si_hay": round(float((captured[with_capture] == best_capture[with_capture]).mean()), 4),
         "fases": {name: round(float((phase == code).mean()), 4) for code, name in enumerate(PHASE_NAMES)},
         "umbrales_fase": {"apertura_ply_menor_a": OPENING_PLY, "final_piezas_hasta": ENDGAME_PIECES},
-        "val_vista_en_train": round(float(seen.mean()), 4),
-        "libro_top1_val": round(float(book_hit.mean()), 4),
-        "libro_top1_val_si_vista": round(float(book_hit[seen].mean()), 4),
-        "posiciones_repetidas": round(float(repeated.mean()), 4),
-        "techo_top1_en_repetidas": round(float(is_mode[repeated].mean()), 4),
-        "por_split": {
-            name: {
-                "posiciones": int(len(idx)),
-                "elo_media": round(float(elo[idx].mean()), 1),
-                "ply_media": round(float(ply[idx].mean()), 2),
-                "fases": [round(float((phase[idx] == c).mean()), 4) for c in range(3)],
-            }
-            for name, idx in zip(SPLIT_NAMES, splits)
-        },
+        "repetidas_entre_partidas": _share(repeated),
+        "repetidas_en_apertura": _share(repeated[opening]),
+        "repetidas_fuera_de_apertura": _share(repeated[~opening]),
+        "techo_top1_en_repetidas": _share(is_mode[repeated]),
+        "techo_top1_posicion_inicial": _share(is_mode[ply == 0]),
     }
     os.makedirs(os.path.dirname(summary_path) or ".", exist_ok=True)
     with open(summary_path, "w", encoding="utf-8") as file:

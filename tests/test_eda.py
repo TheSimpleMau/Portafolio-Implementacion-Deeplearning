@@ -81,18 +81,17 @@ def test_llaves_de_posicion():
     assert keys[0] != keys[2]
 
 
-def test_libro_y_techo_de_acierto():
-    keys = np.array([0, 0, 0, 1, 0, 2])
-    move = np.array([5, 5, 7, 9, 5, 3])
-    assert eda.book_moves(keys[:4], move[:4]).tolist() == [5, 9]
+def test_jugada_modal_y_techo_de_acierto():
+    keys = np.array([0, 0, 0, 1])
+    move = np.array([5, 5, 7, 9])
+    assert eda.mode_moves(keys, move).tolist() == [5, 9]
+    assert eda.accuracy_ceiling(keys, move).tolist() == [True, True, False, True]
 
-    seen, hit = eda.repeated_positions(keys, move, np.arange(4), np.array([4, 5]))
-    assert seen.tolist() == [True, False]
-    assert hit.tolist() == [True, False]
 
-    repeated, is_mode = eda.accuracy_ceiling(keys[:4], move[:4])
-    assert repeated.tolist() == [True, True, True, False]
-    assert is_mode.tolist() == [True, True, False, True]
+def test_repetidas_solo_cuentan_entre_partidas_distintas():
+    keys = np.array([0, 0, 1, 1, 2])
+    game_id = np.array([0, 1, 2, 2, 3])  # la llave 1 se repite dentro de la misma partida
+    assert eda.repeated_across_games(keys, game_id).tolist() == [True, True, False, False, False]
 
 
 def test_initial_graphs_de_punta_a_punta(tmp_path, monkeypatch):
@@ -104,9 +103,8 @@ def test_initial_graphs_de_punta_a_punta(tmp_path, monkeypatch):
 
     assert summary["posiciones"] == 30 * 10
     assert summary["clases_que_aparecen"] == 9  # 1.e4 y 1...e5 son la misma clase al orientar el tablero
-    assert summary["val_vista_en_train"] == 1.0
-    assert summary["libro_top1_val"] == 1.0
+    assert summary["repetidas_entre_partidas"] == 1.0
     assert summary["techo_top1_en_repetidas"] == 1.0
     assert summary["jugada_es_captura"] == 0.2  # Bxc6 y dxc6
-    assert len(list(tmp_path.glob("*.png"))) == 9
+    assert len(list(tmp_path.glob("*.png"))) == 8
     assert json.loads((tmp_path / "resumen.json").read_text(encoding="utf-8")) == summary

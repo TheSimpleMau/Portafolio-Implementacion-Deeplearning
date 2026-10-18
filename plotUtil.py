@@ -135,39 +135,12 @@ def phase_bar(phase, phase_names):
     _save("eda_fases.png")
 
 
-def split_comparison(elo, ply, phase, split_of, split_names, phase_names):
+def repeated_positions_by_ply(repeated_rate, ceiling_rate):
     ensure_graphics_directory()
-    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
-    for code, name in enumerate(split_names):
-        mask = split_of == code
-        axes[0].hist(elo[mask], bins=60, density=True, histtype="step", label=name)
-        axes[1].hist(ply[mask], bins=np.arange(0, 151) - 0.5, density=True, histtype="step", label=name)
-    width = 0.8 / len(split_names)
-    for code, name in enumerate(split_names):
-        mask = split_of == code
-        shares = [(phase[mask] == p).mean() * 100 for p in range(len(phase_names))]
-        axes[2].bar(np.arange(len(phase_names)) + (code - 1) * width, shares, width, label=name)
-    axes[0].set_xlabel("Elo del que mueve")
-    axes[1].set_xlabel("Ply")
-    axes[2].set_xticks(np.arange(len(phase_names)), [n.capitalize() for n in phase_names])
-    axes[0].set_ylabel("Densidad")
-    axes[2].set_ylabel("Porcentaje")
-    axes[0].set_title("Elo")
-    axes[1].set_title("Ply")
-    axes[2].set_title("Fase")
-    for ax in axes:
-        ax.legend()
-    fig.suptitle("Comparación entre train, val y test (división por partida)")
-    _save("eda_comparacion_splits.png")
-
-
-def repeated_positions_by_ply(seen_rate, book_rate, ceiling_rate):
-    ensure_graphics_directory()
-    plies = np.arange(len(seen_rate))
-    plt.figure(figsize=(9, 5))
-    plt.plot(plies, seen_rate * 100, marker=".", label="Posiciones de val que ya están en train")
-    plt.plot(plies, book_rate * 100, marker=".", label="Acierto del «libro» en val (top-1)")
-    plt.plot(plies, ceiling_rate * 100, marker=".", label="Techo de top-1 en posiciones repetidas")
+    plies = np.arange(len(repeated_rate))
+    plt.figure(figsize=(8, 4.5))
+    plt.plot(plies, repeated_rate * 100, marker=".", label="Posiciones que aparecen en 2 o más partidas")
+    plt.plot(plies, ceiling_rate * 100, marker=".", label="Techo de top-1 en esas posiciones")
     plt.xlabel("Ply")
     plt.ylabel("Porcentaje")
     plt.ylim(0, 100)

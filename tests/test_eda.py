@@ -1,3 +1,4 @@
+import functools
 import io
 import json
 
@@ -7,8 +8,11 @@ import numpy as np
 
 import eda
 import plotUtil
-from etlProcess import transform_data
+from etlProcess import transform_data as etl_transform_data
 from preprocessing import encode_move, encode_position, legal_moves_info
+
+# Sin filtro de Elo ni muestreo, para no depender de la configuración del conjunto vigente.
+transform_data = functools.partial(etl_transform_data, min_elo=0, game_sample_rate=1.0)
 
 GAME = """[Event "Rated Blitz game"]
 [WhiteElo "1510"]
@@ -95,8 +99,8 @@ def test_repetidas_solo_cuentan_entre_partidas_distintas():
 
 
 def test_initial_graphs_de_punta_a_punta(tmp_path, monkeypatch):
-    games = [chess.pgn.read_game(io.StringIO(GAME)) for _ in range(30)]
-    data, _ = transform_data(iter(games), positions_per_game=100)
+    headers = dict(chess.pgn.read_game(io.StringIO(GAME)).headers)
+    data, _ = transform_data(iter([(headers, GAME)] * 30), positions_per_game=100)
     monkeypatch.setattr(plotUtil, "GRAPHICS_DIR", str(tmp_path))
 
     summary = eda.initial_graphs(data, tmp_path / "resumen.json")

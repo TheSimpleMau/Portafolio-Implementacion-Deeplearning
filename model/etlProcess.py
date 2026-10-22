@@ -8,7 +8,7 @@ import chess.pgn
 import numpy as np
 import zstandard
 
-from preprocessing import encode_move, encode_position, legal_moves_info
+from model.preprocessing import encode_move, encode_position, legal_moves_info
 
 # 2013-03 solo sirve para depurar; el conjunto principal es el mes más reciente.
 MONTH = "2026-09"

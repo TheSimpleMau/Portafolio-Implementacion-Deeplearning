@@ -3,9 +3,9 @@ import os
 
 import numpy as np
 
-import plotUtil
-from etlProcess import PROCESSED_PATH, load_data
-from preprocessing import N_CLASSES
+from model import plotUtil
+from model.etlProcess import PROCESSED_PATH, load_data
+from model.preprocessing import N_CLASSES
 
 SUMMARY_PATH = "graficas/eda_resumen.json"
 

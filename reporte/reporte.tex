@@ -89,6 +89,12 @@
 \pagenumbering{gobble}
 \renewcommand{\arraystretch}{1.1}
 \raggedbottom
+% Las páginas con solo figuras o tablas a dos columnas las acomodan arriba, sin repartirlas.
+\makeatletter
+\setlength{\@dblfptop}{0pt}
+\setlength{\@dblfpsep}{20pt}
+\setlength{\@dblfpbot}{0pt plus 1fil}
+\makeatother
 
 \title{Reporte de implementación.}
 \author{Mauricio Olguín Sánchez - A01711522}
@@ -428,7 +434,7 @@ El conjunto de \textit{test} no interviene en ninguna decisión: la elección de
 
 \subsubsection{Validación del proceso}
 
-Como un error en la codificación invalidaría todos los resultados, escribí pruebas automáticas antes de procesar los datos. Así, cualquier cambio posterior que rompa la codificación se detecta de inmediato. Entre otras cosas, comprueban que la posición inicial tenga 20 jugadas legales, que cada jugada se pueda codificar y decodificar sin pérdida (incluidos el enroque, la captura al paso y la promoción), que una posición con negras y su versión espejada tengan la misma codificación, que las etiquetas coincidan con las jugadas reales de partidas de ejemplo, que cada filtro descarte las partidas correctas y que la división no repita partidas entre conjuntos.
+Como un error en la codificación invalidaría todos los resultados, escribí pruebas automáticas antes de procesar los datos. Así, cualquier cambio posterior que rompa la codificación se detecta de inmediato. Entre otras cosas, comprueban que cada jugada se pueda codificar y decodificar sin pérdida (incluidos el enroque, la captura al paso y la promoción), que una posición con negras y su versión espejada tengan la misma codificación, que las etiquetas coincidan con las jugadas reales de partidas de ejemplo, que cada filtro descarte las partidas correctas y que la división no repita partidas entre conjuntos.
 \newline
 Cuando agregué la lectura previa de los encabezados, comprobé que, sin los filtros nuevos, el proceso producía exactamente el mismo conjunto que antes con el mes de 2013.
 
@@ -548,20 +554,67 @@ La red se entrena con la entropía cruzada categórica (\textit{sparse categoric
 
 \subsection{Precisión \textit{top-k}}
 
-La métrica principal es la precisión \textit{top-1}: el porcentaje de posiciones en las que la jugada más probable del modelo es la que se jugó. También reporto \textit{top-3} y \textit{top-5} (si la jugada real está entre las tres o cinco más probables). Antes de calcularlas descarto las jugadas ilegales, porque en una partida nunca podrían elegirse. Como la red se entrena sin esa restricción, también mido qué porcentaje de sus primeras opciones es ilegal, para saber si aprendió las reglas.
+Para cada posición el modelo da una probabilidad a cada una de las 4,096 jugadas posibles. Primero descarto las jugadas ilegales, porque en una partida nunca podrían elegirse, y ordeno las legales de la más a la menos probable. Después busco en qué lugar de esa lista quedó la jugada que realmente se jugó. La precisión \textit{top-k} es el porcentaje de posiciones en las que la jugada real quedó entre las $k$ primeras; con $k = 1$ es la exactitud usual de un clasificador.
+\newline
+Por ejemplo, si en la posición inicial el modelo ordena 1.e4 (40\%), 1.d4 (30\%) y 1.\,Nf3 (10\%), y el jugador eligió 1.d4, la jugada real quedó en segundo lugar: la posición cuenta como fallo en \textit{top-1} y como acierto en \textit{top-3} y \textit{top-5}.
+\newline
+Elegí esta métrica porque es la que usan los trabajos que, como este, buscan predecir la jugada de una persona. McIlroy-Young et al.~\cite{mcilroyyoung2020} miden la precisión de coincidencia con la jugada humana (\textit{move-matching accuracy}), que es el \textit{top-1}, y al evaluar solo consideran las jugadas legales que produce la red. Ellos mismos señalan su límite: como jugadores distintos eligen jugadas distintas en la misma posición, ningún modelo puede coincidir con todos. Por eso también reporto \textit{top-3} y \textit{top-5}, como hacen Soldera y Pedrini~\cite{soldera2026} con su lista ordenada de jugadas candidatas (ellos llegan a \textit{top-3}): si la jugada humana queda en segundo o tercer lugar, el modelo la consideró aunque no la eligiera, y eso no es lo mismo que haberla ignorado. En este conjunto el problema es concreto, porque en las posiciones repetidas la jugada más común solo se elige el 62.1\% de las veces (sección~\ref{sec:eda}).
+\newline
+Como la red se entrena sin la restricción de legalidad, también mido qué porcentaje de sus primeras opciones es ilegal, para saber si aprendió las reglas. Las líneas base de la sección~\ref{sec:lineas-base} se evalúan exactamente igual: cada una ordena las jugadas legales con su propia regla y se mide en qué lugar quedó la jugada real.
 \newline
 La métrica principal se calcula sobre \textbf{todas} las posiciones, incluidas las de apertura. Además la desgloso por fase (apertura, medio juego y final). Solo como referencia, para compararme con el protocolo de Maia, también la calculo sin los primeros 10 \textit{plies}.
+
+\subsection{Conjuntos de entrenamiento y validación}
+
+Antes de comparar nada revisé que entrenamiento y validación se parecieran. Las distribuciones del Elo, del \textit{ply} y de las fases prácticamente se enciman (figura~\ref{fig:train-val}), así que la división por partida no dejó a ninguno de los dos conjuntos con jugadores, momentos de la partida o fases distintos. El conjunto de prueba no lo reviso hasta la evaluación final.
+
+\begin{figure*}[t]
+	\centering
+	\includegraphics[width=\textwidth]{figuras/comparacion_train_val.png}
+	\caption{Elo del jugador que mueve, \textit{ply} y fase de la partida en entrenamiento (\textit{train}) y validación (\textit{val}).}
+	\label{fig:train-val}
+\end{figure*}
+
+Aunque ninguna partida está en los dos conjuntos, el 21.0\% de las posiciones de validación aparece idéntica en entrenamiento. Casi todas son de apertura: ahí está repetido el 66.3\% de las posiciones, contra el 0.9\% en el medio juego y el 0.7\% en el final. No es una fuga de datos, porque son posiciones distintas de partidas distintas que coinciden porque los jugadores repiten las mismas aperturas; pero en ellas se puede acertar solo con memoria, y eso es lo que mide la línea base del «libro».
 
 \subsection{Líneas base}
 \label{sec:lineas-base}
 
 Todas las métricas se comparan con cuatro líneas base calculadas con los mismos datos:
 \begin{enumerate}[leftmargin=*]
-	\item una jugada legal al azar (5.4\% de acierto esperado);
+	\item una jugada legal al azar;
 	\item la jugada legal más frecuente en el conjunto de entrenamiento;
-	\item la captura de mayor valor, si existe;
-	\item un «libro»: si la posición exacta aparece en entrenamiento, la jugada que más se jugó en ella. Esta línea base mide cuánto se puede acertar solo con memoria, sobre todo en la apertura, donde las mismas posiciones se repiten en muchas partidas.
+	\item la captura de mayor valor y, si no hay capturas, una jugada legal al azar;
+	\item un «libro»: si la posición exacta aparece en entrenamiento, la jugada que más se jugó en ella y, si no aparece, la jugada legal más frecuente. Esta línea base mide cuánto se puede acertar solo con memoria, sobre todo en la apertura, donde las mismas posiciones se repiten en muchas partidas.
 \end{enumerate}
+Cuando dos jugadas empatan, por ejemplo dos capturas del mismo valor, el orden entre ellas se decide al azar. La tabla~\ref{tab:lineas-base} muestra el acierto de cada línea base en las 450,591 posiciones de validación.
+
+\begin{table*}[t]
+	\centering
+	\footnotesize
+	\setlength{\tabcolsep}{4pt}
+	\begin{tabular}{lrrrrrrr}
+		\hline
+		 & \multicolumn{3}{c}{Todas las posiciones} & \multicolumn{4}{c}{\textit{Top-1} por corte} \\
+		Línea base & \textit{Top-1} & \textit{Top-3} & \textit{Top-5} & Apertura & Medio juego & Final & \shortstack[r]{Sin los primeros\\10 \textit{plies}} \\
+		\hline
+		Azar & 5.4 & 14.4 & 21.7 & 3.6 & 5.3 & 12.1 & 5.7 \\
+		Más frecuente & 11.0 & 22.9 & 33.0 & 18.7 & 6.3 & 15.4 & 9.3 \\
+		Captura de mayor valor & 15.6 & 29.0 & 36.0 & 10.3 & \textbf{17.5} & \textbf{20.5} & \textbf{16.7} \\
+		Libro & \textbf{18.7} & \textbf{29.6} & \textbf{37.8} & \textbf{42.8} & 6.7 & 15.6 & 12.3 \\
+		\hline
+		Posiciones & \multicolumn{3}{r}{450,591} & 138,733 & 270,364 & 41,494 & 380,124 \\
+		\hline
+	\end{tabular}
+	\caption{Acierto de las líneas base en validación (\%). En negritas, la mejor de cada columna.}
+	\label{tab:lineas-base}
+\end{table*}
+
+El «libro» es la mejor línea base en el conjunto completo (18.7\% \textit{top-1}), pero casi todo su acierto viene de la apertura, donde llega al 42.8\%. Fuera de ella las posiciones casi nunca están en entrenamiento, así que termina eligiendo la jugada más frecuente y apenas supera al azar en el medio juego.
+\newline
+Contra lo que esperaba en el análisis exploratorio, capturar la pieza más valiosa es la mejor regla en el medio juego (17.5\%), en el final (20.5\%) y sin los primeros 10 \textit{plies} (16.7\%). Aunque los jugadores solo eligen la captura de mayor valor en una de cada cuatro posiciones con capturas, ninguna de las otras reglas se acerca a eso fuera de la apertura.
+\newline
+Con esto, el modelo tiene dos referencias claras: superar al «libro» en la apertura, donde se puede acertar de memoria, y superar a la captura de mayor valor en el resto de la partida, donde tiene que entender la posición.
 
 % =====================================================================
 \onecolumn
@@ -583,6 +636,10 @@ Análisis exploratorio.
 \newpage
 Gráficas.
 \lstinputlisting[style=pythonish]{../model/plotUtil.py}
+
+\newpage
+Evaluación y líneas base.
+\lstinputlisting[style=pythonish]{../model/evaluation.py}
 
 \clearpage
 \printbibliography[heading=bibintoc, title={Referencias}]

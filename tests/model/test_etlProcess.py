@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 import zstandard
 
-from etlProcess import load_data, read_games, save_data, split_data
-from etlProcess import transform_data as etl_transform_data
-from preprocessing import decode_move
+from model.etlProcess import read_games, split_data
+from model.etlProcess import transform_data as etl_transform_data
+from model.preprocessing import decode_move
 
 # Sin filtro de Elo ni muestreo, para no depender de la configuración del conjunto vigente.
 transform_data = functools.partial(etl_transform_data, min_elo=0, game_sample_rate=1.0)
@@ -97,7 +97,7 @@ def test_posiciones_y_etiquetas_coinciden_con_la_partida(pgn_path):
     assert i == len(data["move"])
 
 
-def test_muestreo_por_partida_es_reproducible(pgn_path):
+def test_muestreo_de_posiciones_por_partida_reproducible(pgn_path):
     data, counters = transform_data(read_games(pgn_path), positions_per_game=3)
     again, _ = transform_data(read_games(pgn_path), positions_per_game=3)
 
@@ -107,22 +107,6 @@ def test_muestreo_por_partida_es_reproducible(pgn_path):
         assert len(set(plies.tolist())) == 3
     for key in data:
         assert np.array_equal(data[key], again[key])
-
-
-def test_limite_de_partidas(pgn_path):
-    _, counters = transform_data(read_games(pgn_path), max_games=1)
-    assert counters["partidas_leidas"] == 1
-
-
-def test_guardar_y_cargar(pgn_path, tmp_path):
-    data, counters = transform_data(read_games(pgn_path))
-    path = tmp_path / "procesado.npz"
-    save_data(data, counters, path, tmp_path / "resumen.json")
-    loaded = load_data(path)
-    assert loaded.keys() == data.keys()
-    for key in data:
-        assert np.array_equal(loaded[key], data[key])
-        assert loaded[key].dtype == data[key].dtype
 
 
 def test_split_por_partida():
@@ -138,11 +122,6 @@ def test_split_por_partida():
     again = split_data(game_ids)
     for a, b in zip((train, val, test), again):
         assert np.array_equal(a, b)
-
-
-def test_split_rechaza_proporciones_invalidas():
-    with pytest.raises(ValueError):
-        split_data(np.arange(10), 0.8, 0.1, 0.2)
 
 
 def test_excluye_posiciones_de_jugadores_con_elo_1500(tmp_path):

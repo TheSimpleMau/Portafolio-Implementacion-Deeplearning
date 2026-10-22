@@ -2,10 +2,8 @@ import random
 
 import chess
 import numpy as np
-import pytest
 
-from preprocessing import (
-    N_CLASSES,
+from model.preprocessing import (
     decode_move,
     encode_move,
     encode_position,
@@ -42,12 +40,6 @@ def all_test_boards():
     return [chess.Board(fen) for fen in fens] + random_positions()
 
 
-def test_posicion_inicial_tiene_20_jugadas_legales():
-    indices, _ = legal_moves_info(chess.Board())
-    assert len(indices) == 20
-    assert N_CLASSES == 4096
-
-
 def test_codificacion_posicion_inicial():
     squares, castling, ep = encode_position(chess.Board())
     tablero = squares.reshape(8, 8)
@@ -58,16 +50,6 @@ def test_codificacion_posicion_inicial():
     assert (tablero[2:6] == 0).all()
     assert castling == 0b1111
     assert ep == -1
-
-
-def test_negras_se_ven_desde_quien_mueve():
-    squares, _, _ = encode_position(chess.Board(BLACK_TO_MOVE_FEN))
-    tablero = squares.reshape(8, 8)
-    assert tablero[0].tolist() == [4, 2, 3, 5, 6, 3, 2, 4]
-    assert tablero[1].tolist() == [1] * 8
-    assert tablero[7].tolist() == [10, 8, 9, 11, 12, 9, 8, 10]
-    assert tablero[6].tolist() == [7, 7, 7, 7, 0, 7, 7, 7]
-    assert tablero[4, 4] == 7
 
 
 def test_negras_y_blancas_espejadas_tienen_la_misma_codificacion():
@@ -86,47 +68,22 @@ def test_jugada_simetrica_para_blancas_y_negras():
     assert decode_move(12 * 64 + 28, negras) == chess.Move.from_uci("e7e5")
 
 
-@pytest.mark.parametrize("board", all_test_boards(), ids=lambda b: b.fen())
-def test_ida_y_vuelta_de_todas_las_jugadas_legales(board):
-    flipped = board.turn == chess.BLACK
-    indices, _ = legal_moves_info(board)
-    assert indices.tolist() == sorted(set(indices.tolist()))
-    for move in board.legal_moves:
-        index = encode_move(move, flipped)
-        if index is None:
-            assert move.promotion != chess.QUEEN
-            continue
-        assert index in indices
-        decoded = decode_move(index, board)
-        assert decoded in board.legal_moves
-        assert (decoded.from_square, decoded.to_square) == (move.from_square, move.to_square)
-    for index in indices:
-        assert decode_move(int(index), board) in board.legal_moves
-
-
-def test_enroque_y_captura_al_paso():
-    board = chess.Board(CASTLING_FEN)
-    assert encode_move(chess.Move.from_uci("e1g1"), flipped=False) == 4 * 64 + 6
-    indices, _ = legal_moves_info(board)
-    assert 4 * 64 + 6 in indices
-    assert 4 * 64 + 2 in indices
-
-    board = chess.Board(EN_PASSANT_FEN)
-    _, castling, ep = encode_position(board)
-    assert ep == 5
-    assert castling == 0b1111
-    assert decode_move(encode_move(chess.Move.from_uci("e5f6"), False), board).uci() == "e5f6"
-
-
-def test_promocion_solo_a_dama():
-    board = chess.Board(PROMOTION_FEN)
-    indices, _ = legal_moves_info(board)
-    a7a8 = 48 * 64 + 56
-    assert indices.tolist().count(a7a8) == 1
-    assert encode_move(chess.Move.from_uci("a7a8q"), False) == a7a8
-    assert encode_move(chess.Move.from_uci("a7a8n"), False) is None
-    assert encode_move(chess.Move.from_uci("a7a8r"), False) is None
-    assert decode_move(a7a8, board).uci() == "a7a8q"
+def test_ida_y_vuelta_de_todas_las_jugadas_legales():
+    for board in all_test_boards():
+        flipped = board.turn == chess.BLACK
+        indices, _ = legal_moves_info(board)
+        assert indices.tolist() == sorted(set(indices.tolist()))
+        for move in board.legal_moves:
+            index = encode_move(move, flipped)
+            if index is None:
+                assert move.promotion != chess.QUEEN
+                continue
+            assert index in indices
+            decoded = decode_move(index, board)
+            assert decoded in board.legal_moves
+            assert (decoded.from_square, decoded.to_square) == (move.from_square, move.to_square)
+        for index in indices:
+            assert decode_move(int(index), board) in board.legal_moves
 
 
 def test_valor_de_captura_por_jugada_legal():

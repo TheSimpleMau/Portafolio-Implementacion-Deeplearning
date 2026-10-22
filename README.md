@@ -21,3 +21,21 @@ uv pip install --python .venv/bin/python -r requirements.txt
 ```
 
 Los datos se descargan manualmente a `data/raw/` (la carpeta está ignorada por git).
+
+## Estructura
+
+```
+model/   # todo lo del modelo
+  preprocessing.py   # tablero y jugadas a tensores (4,096 clases)
+  etlProcess.py      # PGN.zst de Lichess a posiciones, filtros y división por partida
+  eda.py, plotUtil.py
+tests/   # pytest
+```
+
+## Uso
+
+```bash
+.venv/bin/python -m model.etlProcess   # ETL (los datos crudos van en data/raw/)
+.venv/bin/python -m model.eda          # gráficas del análisis exploratorio en graficas/
+.venv/bin/python -m pytest -q
+```

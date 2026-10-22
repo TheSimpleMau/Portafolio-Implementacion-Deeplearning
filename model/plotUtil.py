@@ -148,3 +148,27 @@ def repeated_positions_by_ply(repeated_rate, ceiling_rate):
     plt.title("Posiciones que se repiten entre partidas, por ply")
     plt.legend()
     _save("eda_posiciones_repetidas.png")
+
+
+def split_comparison(elo, ply, phase, splits, split_names, phase_names):
+    """Distribuciones de Elo, ply y fase en cada conjunto (splits = índices de cada uno)."""
+    ensure_graphics_directory()
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
+    width = 0.8 / len(splits)
+    for code, (idx, name) in enumerate(zip(splits, split_names)):
+        axes[0].hist(elo[idx], bins=60, density=True, histtype="step", label=name)
+        axes[1].hist(ply[idx], bins=np.arange(0, 151) - 0.5, density=True, histtype="step", label=name)
+        shares = np.bincount(phase[idx], minlength=len(phase_names)) / len(idx) * 100
+        offset = (code - (len(splits) - 1) / 2) * width
+        axes[2].bar(np.arange(len(phase_names)) + offset, shares, width, label=name)
+    axes[0].set_xlabel("Elo del que mueve")
+    axes[1].set_xlabel("Ply")
+    axes[2].set_xticks(np.arange(len(phase_names)), [n.capitalize() for n in phase_names])
+    axes[0].set_ylabel("Densidad")
+    axes[2].set_ylabel("Porcentaje")
+    axes[0].set_title("Elo")
+    axes[1].set_title("Ply")
+    axes[2].set_title("Fase")
+    for ax in axes:
+        ax.legend()
+    _save("comparacion_train_val.png")

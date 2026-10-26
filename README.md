@@ -60,5 +60,6 @@ brew install stockfish
 - Clic en la pieza y clic en el destino; la promoción es siempre a dama, como en el modelo. Si el humano lleva negras, el tablero se muestra desde su lado.
 - La barra junto al tablero y el panel muestran la ventaja según Stockfish a fuerza completa: evaluación en peones (o `#n` si hay mate) y probabilidad de ganar de las blancas con la fórmula de Lichess.
 - Cuando juega el modelo, las flechas y el panel muestran sus tres jugadas más probables (renormalizadas sobre las legales) y cuánta probabilidad puso en jugadas ilegales.
-- Teclas: `n` nueva partida con los mismos jugadores, `u` deshacer, espacio pausa, `Esc` vuelve al menú.
+- Cuando juegan dos CPU se elige el modo: **Automático** (juegan solas, con espacio para pausar) o **Manual** (cada jugada espera la flecha derecha o Enter).
+- Teclas: `n` nueva partida con los mismos jugadores, `u` deshacer, `Esc` vuelve al menú.
 - Al terminar, la partida se guarda en `resultados/partidas/` como PGN, con el top-3 del modelo como comentario en cada jugada suya.

@@ -140,6 +140,7 @@ class Menu:
         self.kinds = {chess.WHITE: "humano", chess.BLACK: "stockfish" if self.has_stockfish else "azar"}
         self.elos = {chess.WHITE: ELO_OPTIONS[0], chess.BLACK: ELO_OPTIONS[0]}
         self.model_index = 0
+        self.manual = False
         self.buttons = []
 
     def available(self, kind):
@@ -147,7 +148,7 @@ class Menu:
 
     def config(self):
         model = self.models[self.model_index] if self.models else None
-        return self.kinds, self.elos, model
+        return self.kinds, self.elos, model, self.manual
 
     def button(self, rect, label, selected=False, enabled=True, action=None):
         rect = pygame.Rect(rect)
@@ -199,10 +200,17 @@ class Menu:
             text = f"No hay archivos .keras en {MODELS_DIR}/"
             self.canvas.blit(self.fonts.normal.render(text, True, MUTED), (560, 840))
         if not self.has_stockfish:
-            self.canvas.blit(self.fonts.small.render("Stockfish no está instalado (brew install stockfish).",
-                                                     True, MUTED), (560, 940))
+            note = self.fonts.small.render("Stockfish no está instalado (brew install stockfish).", True, MUTED)
+            self.canvas.blit(note, note.get_rect(center=(width // 2, 190)))
 
-        self.play_rect = pygame.Rect(width // 2 - 250, 1040, 500, 120)
+        # El modo solo importa cuando no juega ningún humano.
+        label("CPU vs CPU", 960)
+        cpu_only = "humano" not in self.kinds.values()
+        for i, (name, manual) in enumerate((("Automático", False), ("Manual", True))):
+            self.button((560 + i * 330, 940, 300, 90), name, cpu_only and self.manual == manual, cpu_only,
+                        lambda m=manual: setattr(self, "manual", m))
+
+        self.play_rect = pygame.Rect(width // 2 - 250, 1090, 500, 120)
         self.button(self.play_rect, "Jugar", selected=True, action=lambda: None)
 
     def on_click(self, pos):
@@ -215,13 +223,14 @@ class Menu:
 
 
 class ChessGame:
-    def __init__(self, canvas, fonts, pieces, players, evaluator, delay=0.5):
+    def __init__(self, canvas, fonts, pieces, players, evaluator, manual=False, delay=0.5):
         self.canvas = canvas
         self.fonts = fonts
         self.pieces = pieces
         self.players = players
         self.evaluator = evaluator
         self.delay = delay
+        self.manual = manual and None not in players.values()
         self.flipped = players[chess.WHITE] is not None and players[chess.BLACK] is None
         self.new_game()
 
@@ -235,6 +244,7 @@ class ChessGame:
         self.analysis = None  # (ply, color, [(san, prob, move)], ilegales) de la última jugada del modelo
         self.selected = None
         self.paused = False
+        self.step_requested = False
         self.saved_path = None
         self.last_cpu_move = time.monotonic()
         self.refresh_evaluation()
@@ -289,13 +299,20 @@ class ChessGame:
             self.new_game()
         elif key == pygame.K_u:
             self.undo()
-        elif key == pygame.K_SPACE:
+        elif key == pygame.K_SPACE and not self.manual:
             self.paused = not self.paused
+        elif key in (pygame.K_RIGHT, pygame.K_RETURN) and self.manual:
+            self.step_requested = True
 
     def cpu_turn(self):
         player = self.players[self.board.turn]
-        if (player is None or self.paused or self.board.is_game_over(claim_draw=True)
-                or time.monotonic() - self.last_cpu_move < self.delay):
+        if player is None or self.paused or self.board.is_game_over(claim_draw=True):
+            return
+        if self.manual:
+            if not self.step_requested:
+                return
+            self.step_requested = False
+        elif time.monotonic() - self.last_cpu_move < self.delay:
             return
         move, analysis = next_move(player, self.board)
         self.push(move, analysis)
@@ -397,7 +414,10 @@ class ChessGame:
         if self.saved_path:
             line(f"PGN: {self.saved_path}", self.fonts.small, MUTED, 48)
         line("n nueva   u deshacer   Esc menú", self.fonts.small, MUTED, 44)
-        line("espacio pausa (CPU vs CPU)", self.fonts.small, MUTED, 44)
+        if self.manual:
+            line("Manual: flecha derecha o Enter avanza", self.fonts.small, MUTED, 44)
+        else:
+            line("espacio pausa (CPU vs CPU)", self.fonts.small, MUTED, 44)
 
     def draw(self):
         self.draw_board()
@@ -419,9 +439,9 @@ class App:
         self.game = None
 
     def start_game(self):
-        kinds, elos, model_path = self.menu.config()
+        kinds, elos, model_path, manual = self.menu.config()
         players = {color: make_player(kinds[color], model_path, elos[color]) for color in chess.COLORS}
-        self.game = ChessGame(self.canvas, self.fonts, self.pieces, players, self.evaluator)
+        self.game = ChessGame(self.canvas, self.fonts, self.pieces, players, self.evaluator, manual)
 
     def back_to_menu(self):
         self.game.close()

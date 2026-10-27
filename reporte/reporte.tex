@@ -285,7 +285,7 @@ Utilicé la \textit{Lichess Open Database}~\cite{lichessDatabase}, que publica c
 \newline
 Primero construí y probé el \textit{pipeline} con el archivo de marzo de 2013 (\path{lichess_db_standard_rated_2013-03.pgn.zst}), que pesa 22.5 MB comprimido y contiene 158,635 partidas con calificación (\textit{rated}). Ese mes tiene una limitación clara: casi no hay jugadores de nivel alto. Solo en 13 partidas que no son Bullet ambos jugadores tienen un Elo de 2,200 o más.
 \newline
-Por eso el conjunto definitivo sale del mes completo más reciente al momento de procesarlo, septiembre de 2026 (\path{lichess_db_standard_rated_2026-09.pgn.zst}): pesa 29.2 GB comprimido y contiene 89,616,462 partidas. La tabla~\ref{tab:datos-meses} compara los dos meses. Cada partida trae encabezados con el tipo de evento, el Elo de ambos jugadores, el resultado, el control de tiempo y la forma en que terminó, seguidos de las jugadas en notación algebraica. En los meses recientes los encabezados también incluyen el título del jugador, como GM o BOT (las cuentas de programas de ajedrez), y las jugadas vienen acompañadas de comentarios con el tiempo que le quedaba a cada jugador.
+Por eso el conjunto definitivo sale del mes completo más reciente al momento de procesarlo, septiembre de 2026 (\path{lichess_db_standard_rated_2026-09.pgn.zst}): pesa 29.2 GB comprimido y contiene 89,616,462 partidas. La tabla~\ref{tab:datos-meses} compara los dos meses, y al final de esta sección describo los campos de cada partida.
 
 \begin{table}[H]
 	\centering
@@ -319,6 +319,25 @@ Por eso el conjunto definitivo sale del mes completo más reciente al momento de
 \end{table}
 
 El Elo medio de los dos meses es parecido, pero en 2026 el rango es mucho más amplio: hay más de un millón y medio de partidas que no son Bullet entre jugadores humanos con un Elo de 2,200 o más. De esas partidas sale el conjunto que uso.
+\newline
+En el PGN, cada partida empieza con sus encabezados, una línea por campo con el nombre del campo y su valor entre comillas, y sigue con sus jugadas. Estos son los campos de septiembre de 2026, con los de blancas y negras agrupados, y el uso que les doy:
+\begin{description}[style=unboxed]
+	\item[Event - categórico.] Tipo de partida: su ritmo (UltraBullet, Bullet, Blitz, Rapid, Classical o Correspondence) y si se jugó fuera de torneo, en un torneo de Lichess o en un torneo suizo; en los dos últimos casos incluye el enlace al torneo. Lo uso en el filtro de ritmo para descartar las partidas Bullet y UltraBullet.
+	\item[Site - texto.] Enlace a la partida en Lichess. No lo uso.
+	\item[Date, UTCDate, UTCTime - fecha y hora.] Fecha y hora, en tiempo universal (UTC), en que empezó la partida. En este mes Date y UTCDate siempre coinciden. No los uso.
+	\item[Round - texto.] Ronda del torneo; en Lichess siempre vale «-». No lo uso.
+	\item[White, Black - texto.] Nombres de usuario de las blancas y de las negras. No los uso.
+	\item[Result - categórico.] Resultado: 1-0 si ganan las blancas, 0-1 si ganan las negras, 1/2-1/2 en tablas y * si la partida quedó sin terminar. No lo uso, porque el modelo aprende la jugada y no el resultado.
+	\item[WhiteElo, BlackElo - numérico.] Elo de cada jugador al empezar la partida. Los uso en el filtro de nivel, que pide 2,200 o más a ambos, y guardo el del jugador que mueve en cada posición.
+	\item[WhiteRatingDiff, BlackRatingDiff - numérico.] Puntos de Elo que ganó o perdió cada jugador con la partida, por ejemplo +11 o -7. Faltan en una pequeña parte de las partidas. No los uso.
+	\item[WhiteTitle, BlackTitle - categórico.] Título del jugador, solo cuando tiene uno: títulos de ajedrez como GM, IM, FM o NM, el título LM que otorga Lichess, o BOT para las cuentas de programas de ajedrez. Los uso en el filtro de cuentas BOT.
+	\item[ECO - categórico.] Código de la apertura en la \textit{Encyclopaedia of Chess Openings}, de A00 a E99. No lo uso.
+	\item[Opening - categórico.] Nombre de la apertura, por ejemplo «Sicilian Defense: Smith-Morra Gambit». No lo uso.
+	\item[TimeControl - texto.] Control de tiempo: segundos iniciales de cada jugador más segundos que se suman por jugada, por ejemplo 180+2, o «-» en las partidas por correspondencia. Lichess deriva el ritmo de Event a partir de este campo, así que no lo uso directamente.
+	\item[Termination - categórico.] Cómo terminó la partida: Normal (mate, rendición o tablas), Time forfeit (un jugador se quedó sin tiempo) y, en pocos casos, Abandoned, Insufficient material, Unterminated o Rules infraction. No lo uso.
+	\item[Jugadas - texto.] El cuerpo de la partida: las jugadas numeradas en SAN, cada una con un comentario con el tiempo que le quedaba en el reloj a quien la jugó y, en las partidas analizadas por computadora (cerca de una de cada diez), con la evaluación de la posición según un motor; al final se repite el resultado. Uso las jugadas para reconstruir cada posición e ignoro los comentarios.
+\end{description}
+Los archivos de 2013 tienen los mismos campos, salvo Date y Round, y sus jugadas no traen comentarios de reloj.
 
 \subsection{Proceso de ETL}
 
@@ -410,7 +429,18 @@ Las posiciones consecutivas de una misma partida se parecen mucho entre sí, as�
 
 \subsubsection{\textit{Loading}}
 
-El conjunto procesado se guarda en disco para no repetir la transformación cada vez que se entrena.
+El conjunto procesado se guarda en disco para no repetir la transformación cada vez que se entrena. Tiene una fila por posición, con estas columnas:
+\begin{description}[style=unboxed]
+	\item[Tablero - 64 enteros de 0 a 12.] Contenido de cada casilla, ya orientado hacia quien mueve y con las casillas numeradas como en la representación de la jugada: 0 si está vacía, de 1 a 6 para el peón, caballo, alfil, torre, dama y rey del jugador que mueve, y de 7 a 12 para las mismas piezas del rival.
+	\item[Derechos de enroque - entero de 0 a 15.] Cuatro bits, uno por cada enroque que todavía se puede hacer: corto y largo del jugador que mueve y corto y largo del rival.
+	\item[Captura al paso - entero de -1 a 7.] Columna, de a (0) a h (7), de la casilla en la que se puede capturar al paso, o -1 si no hay ninguna captura al paso legal. Como esa casilla siempre está en la sexta fila desde el punto de vista de quien mueve, basta con la columna.
+	\item[Jugada - entero de 0 a 4,095.] La jugada que se jugó en la posición, es decir, la etiqueta que debe predecir el modelo.
+	\item[Partida - entero.] Número de la partida de la que sale la posición, de 0 a 376,457, asignado en el orden en que se leyeron (no es el identificador de Lichess). Sirve para la división por partida.
+	\item[Ply - entero de 0 a 456.] Número de \textit{plies} que se jugaron antes de la posición, de modo que 0 es la posición inicial. Lo uso en el análisis exploratorio para estudiar las fases de la partida.
+	\item[Elo - entero de 2,200 a 3,010.] Elo del jugador que mueve, tomado de WhiteElo o de BlackElo según el turno. También lo uso en el análisis exploratorio.
+	\item[Jugadas legales - lista de pares de enteros.] Cada jugada legal de la posición, codificada como la etiqueta, junto con el valor de la pieza que captura (0 si no captura). Su longitud cambia de una posición a otra.
+\end{description}
+Las tres primeras columnas no se guardan como canales: los de la tabla~\ref{tab:canales} y la versión ordinal se construyen a partir de ellas al momento de entrenar. La codificación de la jugada y los valores de captura son los de los párrafos de representación de la jugada y de jugadas legales.
 \newline
 La división en entrenamiento, validación y prueba se hace \textbf{por partida y no por posición}. Si se dividiera por posición, posiciones casi idénticas de la misma partida quedarían en entrenamiento y en prueba, y las métricas saldrían infladas por una fuga de datos. Mezclé las partidas con la semilla 42 y asigné 80\%, 10\% y 10\% de ellas a cada conjunto (tabla~\ref{tab:split}). Ninguna partida aparece en más de un conjunto.
 

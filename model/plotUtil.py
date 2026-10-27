@@ -5,6 +5,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 DPI = 300
 plt.rcParams.update({"font.size": 12})
@@ -172,3 +173,20 @@ def split_comparison(elo, ply, phase, splits, split_names, phase_names):
     for ax in axes:
         ax.legend()
     _save("comparacion_train_val.png")
+
+
+def training_history(history, name):
+    """Pérdida y accuracy por época en train y val; la línea marca la época que guarda el checkpoint."""
+    ensure_graphics_directory()
+    df = pd.DataFrame(history)
+    df.index += 1
+    best = df["val_loss"].idxmin()
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    df.plot(y=["loss", "val_loss"], ax=axes[0], marker=".", title="Pérdida por época")
+    (df[["accuracy", "val_accuracy"]] * 100).plot(ax=axes[1], marker=".", title="Accuracy (top-1) por época")
+    axes[1].set_ylabel("Porcentaje")
+    for ax in axes:
+        ax.axvline(best, color="black", linestyle="--", label=f"Mejor época = {best}")
+        ax.set_xlabel("Época")
+        ax.legend()
+    _save(f"{name}_curvas.png")

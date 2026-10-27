@@ -49,3 +49,36 @@ def test_libro_usa_la_jugada_modal_de_train_y_si_no_la_mas_frecuente():
     scores = evaluation.book_scores(np.array([0, 1]), modes, offsets, legal, fallback)
     ranks = evaluation.played_rank(scores, offsets, legal, np.array([20, 30]))
     assert ranks.tolist() == [0, 0]  # posición en train: libro (20); posición nueva: la más frecuente (30)
+
+
+class FixedModel:
+    """Modelo falso que devuelve siempre las mismas probabilidades."""
+
+    def __init__(self, probs):
+        self.probs = probs
+
+    def predict(self, x, verbose=0):
+        return self.probs[:len(x)]
+
+
+def test_evaluar_modelo_entre_legales_y_top1_ilegal():
+    data = {
+        "squares": np.zeros((3, 64), dtype=np.int8),
+        "castling": np.zeros(3, dtype=np.uint8),
+        "ep": np.full(3, -1, dtype=np.int8),
+        "ply": np.array([0, 5, 30]),
+        "move": np.array([30, 40, 60]),
+        "legal_offsets": OFFSETS,
+        "legal_moves": LEGAL,
+        "legal_capture": CAPTURE,
+    }
+    probs = np.tile(np.arange(4096) * 1e-7, (3, 1))  # fondo sin empates
+    probs[0, [10, 30]] = [0.6, 0.3]       # la real en 2.º lugar
+    probs[1, [40, 50]] = [0.2, 0.1]       # acierto
+    probs[1, 999] = 0.7                   # pero la más probable es ilegal
+    probs[2, [60, 70]] = [0.5, 0.1]       # acierto
+
+    results = evaluation.evaluate_model(FixedModel(probs), data, np.arange(3))["por_corte"]["todas"]
+    assert results["top1"] == pytest.approx(2 / 3)
+    assert results["top3"] == pytest.approx(1.0)
+    assert results["top1_ilegal"] == pytest.approx(1 / 3)

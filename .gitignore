@@ -25,3 +25,4 @@ articulos_investigacion/
 *.run.xml
 *.synctex.gz
 *.toc
+*-blx.bib

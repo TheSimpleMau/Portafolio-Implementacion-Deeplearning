@@ -45,10 +45,15 @@ def save_game(game, games_dir=GAMES_DIR):
     return path
 
 
-def play_game(white, black, max_plies=MAX_PLIES):
-    """Partida CPU vs CPU sin ventana; devuelve el PGN con el top-3 del modelo como comentario."""
+def play_game(white, black, max_plies=MAX_PLIES, opening=()):
+    """Partida CPU vs CPU sin ventana; devuelve el PGN con el top-3 del modelo como comentario.
+
+    opening: jugadas en SAN que se juegan antes de que decidan los jugadores.
+    """
     board = chess.Board()
-    comments = []
+    for san in opening:
+        board.push_san(san)
+    comments = ["apertura"] * len(opening)
     while not board.is_game_over(claim_draw=True) and board.ply() < max_plies:
         player = white if board.turn == chess.WHITE else black
         move, analysis = next_move(player, board)

@@ -322,7 +322,7 @@ El Elo medio de los dos meses es parecido, pero en 2026 el rango es mucho más a
 \newline
 En el PGN, cada partida empieza con sus encabezados, una línea por campo con el nombre del campo y su valor entre comillas, y sigue con sus jugadas. Estos son los campos de septiembre de 2026, con los de blancas y negras agrupados, y el uso que les doy:
 \begin{description}[style=unboxed]
-	\item[Event - categórico.] Tipo de partida: su ritmo (UltraBullet, Bullet, Blitz, Rapid, Classical o Correspondence) y si se jugó fuera de torneo, en un torneo de Lichess o en un torneo suizo; en los dos últimos casos incluye el enlace al torneo. Lo uso en el filtro de ritmo para descartar las partidas Bullet y UltraBullet.
+	\item[Event - categórico.] Tipo de partida: su ritmo (UltraBullet, Bullet, Blitz, Rapid, Classical o Correspondence) y si se jugó fuera de torneo, en un torneo de Lichess o en un torneo suizo; en los dos últimos casos incluye el enlace al torneo. Lo uso en el filtro de ritmo para descartar las partidas Bullet y UltraBullet, y en el análisis exploratorio para comparar los ritmos.
 	\item[Site - texto.] Enlace a la partida en Lichess. No lo uso.
 	\item[Date, UTCDate, UTCTime - fecha y hora.] Fecha y hora, en tiempo universal (UTC), en que empezó la partida. En este mes Date y UTCDate siempre coinciden. No los uso.
 	\item[Round - texto.] Ronda del torneo; en Lichess siempre vale «-». No lo uso.
@@ -331,10 +331,10 @@ En el PGN, cada partida empieza con sus encabezados, una línea por campo con el
 	\item[WhiteElo, BlackElo - numérico.] Elo de cada jugador al empezar la partida. Los uso en el filtro de nivel, que pide 2,200 o más a ambos, y guardo el del jugador que mueve en cada posición.
 	\item[WhiteRatingDiff, BlackRatingDiff - numérico.] Puntos de Elo que ganó o perdió cada jugador con la partida, por ejemplo +11 o -7. Faltan en una pequeña parte de las partidas. No los uso.
 	\item[WhiteTitle, BlackTitle - categórico.] Título del jugador, solo cuando tiene uno: títulos de ajedrez como GM, IM, FM o NM, el título LM que otorga Lichess, o BOT para las cuentas de programas de ajedrez. Los uso en el filtro de cuentas BOT.
-	\item[ECO - categórico.] Código de la apertura en la \textit{Encyclopaedia of Chess Openings}, de A00 a E99. No lo uso.
-	\item[Opening - categórico.] Nombre de la apertura, por ejemplo «Sicilian Defense: Smith-Morra Gambit». No lo uso.
+	\item[ECO - categórico.] Código de la apertura en la \textit{Encyclopaedia of Chess Openings}, de A00 a E99. Lichess lo asigna con su propia tabla de aperturas. Solo lo uso en el análisis exploratorio y para ver el acierto del modelo por apertura.
+	\item[Opening - categórico.] Nombre de la apertura, por ejemplo «Sicilian Defense: Smith-Morra Gambit». Solo lo uso en el análisis exploratorio y para ver el acierto del modelo por apertura.
 	\item[TimeControl - texto.] Control de tiempo: segundos iniciales de cada jugador más segundos que se suman por jugada, por ejemplo 180+2, o «-» en las partidas por correspondencia. Lichess deriva el ritmo de Event a partir de este campo, así que no lo uso directamente.
-	\item[Termination - categórico.] Cómo terminó la partida: Normal (mate, rendición o tablas), Time forfeit (un jugador se quedó sin tiempo) y, en pocos casos, Abandoned, Insufficient material, Unterminated o Rules infraction. No lo uso.
+	\item[Termination - categórico.] Cómo terminó la partida: Normal (mate, rendición o tablas), Time forfeit (un jugador se quedó sin tiempo) y, en pocos casos, Abandoned, Insufficient material, Unterminated o Rules infraction. Solo lo uso en el análisis exploratorio.
 	\item[Jugadas - texto.] El cuerpo de la partida: las jugadas numeradas en SAN, cada una con un comentario con el tiempo que le quedaba en el reloj a quien la jugó y, en las partidas analizadas por computadora (cerca de una de cada diez), con la evaluación de la posición según un motor; al final se repite el resultado. Uso las jugadas para reconstruir cada posición e ignoro los comentarios.
 \end{description}
 Los archivos de 2013 tienen los mismos campos, salvo Date y Round, y sus jugadas no traen comentarios de reloj.
@@ -564,6 +564,49 @@ En esas posiciones repetidas, la jugada más frecuente se elige el 62.1\% de las
 	\label{fig:eda-repetidas}
 \end{figure}
 
+\subsection{Aperturas y partidas}
+\label{sec:eda-aperturas}
+
+Las secciones anteriores describen posiciones; esta describe las 376,458 partidas de las que salen. Lichess anota en cada partida el código ECO y el nombre de su apertura con una tabla propia de 500 códigos y 3,177 nombres. Cada nombre tiene la forma «familia: variante», por ejemplo «Sicilian Defense: Najdorf Variation», y la tabla tiene 150 familias. En mis partidas aparecen 496 códigos, 2,625 nombres y 142 familias.
+\newline
+\textbf{Aperturas.} La Defensa Siciliana sola está en el 17.4\% de las partidas; le siguen la Francesa (6.7\%), la Inglesa (6.1\%) y la Caro-Kann (6.1\%) (figura~\ref{fig:eda-familias}). Bastan 8 familias para cubrir la mitad de las partidas, 25 para el 80\% y 56 para el 95\% (figura~\ref{fig:eda-aperturas-acumulado}). Por grupos ECO, las aperturas semiabiertas (B, 32.9\%) y las de flanco y otras (A, 29.3\%) son mayoría; siguen las abiertas y la Francesa (C, 16.5\%), las cerradas y semicerradas (D, 14.5\%) y las indias (E, 6.8\%). Esta concentración explica que tantas posiciones de apertura se repitan entre partidas.
+\newline
+\textbf{Primera jugada.} Las blancas abren con 1.e4 en el 47.6\% de las partidas y con 1.d4 en el 32.5\%. Contra 1.e4, las negras responden sobre todo 1\ldots c5, la Siciliana (36.3\%); contra 1.d4, 1\ldots\,Nf6 (46.9\%) (figura~\ref{fig:eda-primera-jugada}).
+\newline
+\textbf{Ritmos.} El conjunto es casi todo Blitz: el 92.2\% de las partidas. Las Rápidas son el 7.4\% y las Clásicas y por correspondencia juntas, el 0.4\%. El reparto de aperturas cambia poco con el ritmo: en las Rápidas hay menos aperturas de flanco (23.8\% contra 29.8\% en Blitz) y más abiertas (20.1\% contra 16.2\%).
+\newline
+\textbf{Cómo terminan.} En el 23.2\% de las partidas a un jugador se le acabó el tiempo: el 24.3\% en Blitz y el 11.1\% en Rápidas (figura~\ref{fig:eda-terminacion}). Es decir, una parte importante de las jugadas del conjunto se hizo con prisa. En las Clásicas y por correspondencia, el 34.8\% quedó sin terminar.
+\newline
+\textbf{Duración.} Una partida dura en mediana 74 \textit{plies}, es decir, 37 jugadas por bando, y el 90\% dura entre 32 y 140 \textit{plies}.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\columnwidth]{figuras/eda_familias_aperturas.png}
+	\caption{Porcentaje de las partidas de cada una de las 20 familias de aperturas más jugadas, según el nombre que les asigna Lichess.}
+	\label{fig:eda-familias}
+\end{figure}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\columnwidth]{figuras/eda_aperturas_acumulado.png}
+	\caption{Porcentaje acumulado de las partidas al sumar las familias de aperturas, de la más a la menos jugada.}
+	\label{fig:eda-aperturas-acumulado}
+\end{figure}
+
+\begin{figure*}[t]
+	\centering
+	\includegraphics[width=\textwidth]{figuras/eda_primera_jugada.png}
+	\caption{Primera jugada de las blancas y respuesta de las negras a 1.e4 y a 1.d4, en porcentaje de las partidas que empiezan así.}
+	\label{fig:eda-primera-jugada}
+\end{figure*}
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\columnwidth]{figuras/eda_terminacion.png}
+	\caption{Cómo terminan las partidas de cada ritmo. «Otras» reúne las partidas abandonadas, las que terminan por material insuficiente y las que terminan por una infracción.}
+	\label{fig:eda-terminacion}
+\end{figure}
+
 \subsection{Conclusiones del análisis}
 
 \begin{itemize}[leftmargin=*]
@@ -572,6 +615,7 @@ En esas posiciones repetidas, la jugada más frecuente se elige el 62.1\% de las
 	\item El modelo tiene que superar al azar (5.4\%) en todo el conjunto.
 	\item Más de dos tercios de las posiciones de apertura se repiten entre partidas, así que en la apertura también lo compararé con el «libro» (sección~\ref{sec:lineas-base}), que solo usa memoria.
 	\item En las posiciones repetidas, el acierto \textit{top-1} no puede pasar de alrededor del 62\%, porque los jugadores no coinciden entre sí.
+	\item Las aperturas se concentran en pocas familias (8 cubren la mitad de las partidas), y el conjunto es casi todo Blitz: en una de cada cuatro partidas a un jugador se le acaba el tiempo.
 	\item La cola larga de clases y el bajo porcentaje de capturas de mayor valor indican que el modelo tendrá que aprender jugadas poco frecuentes y que una regla sencilla no bastará.
 \end{itemize}
 
@@ -691,6 +735,15 @@ Entrené con las 3.6 millones de posiciones de entrenamiento, en lotes de 512, c
 El modelo acierta la jugada del jugador en el 39.2\% de las posiciones de validación y la tiene entre sus cinco primeras opciones en el 77.0\% (tabla~\ref{tab:resultados-modelo}). Supera a las líneas base en todas las fases. En la apertura (51.7\%) supera al «libro» (42.8\%), así que hace algo más que recordar aperturas; en el medio juego y en el final casi duplica a la captura de mayor valor.
 \newline
 Sin descartar las jugadas ilegales, solo el 2.6\% de sus primeras opciones es ilegal, así que aprendió casi todas las reglas de movimiento. Esos errores se concentran en el final (5.7\%), la fase con menos posiciones para aprender.
+\newline
+Por apertura, el acierto casi no cambia (figura~\ref{fig:acierto-aperturas}): va de 37.6\% en las aperturas de flanco (A) a 40.4\% en las semiabiertas (B), y entre las diez familias más jugadas, de 36.5\% en el Queen's Pawn Game a 42.4\% en la Ruy López. En todas supera al «libro» por unos 20 puntos. Las aperturas en las que acierta menos son también las que el «libro» acierta menos, probablemente porque en ellas las posiciones se repiten menos entre partidas.
+
+\begin{figure*}[t]
+	\centering
+	\includegraphics[width=\textwidth]{figuras/acierto_por_apertura.png}
+	\caption{Acierto \textit{top-1} del modelo y del «libro» en validación, por grupo ECO y por las diez familias de aperturas más jugadas. «Otras» reúne al resto de las familias.}
+	\label{fig:acierto-aperturas}
+\end{figure*}
 
 \begin{table}[H]
 	\centering
@@ -714,6 +767,45 @@ Sin descartar las jugadas ilegales, solo el 2.6\% de sus primeras opciones es il
 \subsection{Pruebas para reducir el sobreajuste}
 
 Para reducir el sobreajuste probé varios cambios, uno a la vez, con una muestra de 250 mil posiciones de entrenamiento y 100 mil de validación: Dropout con tasas de 0.3 a 0.7, antes y después de la primera capa densa; normalización por lotes; una tasa de aprendizaje menor; lotes de 256 y de 1,024; y redes más pequeñas. Solo mejoró el Dropout después de la primera capa densa: con una tasa de 0.6, el \textit{top-1} en validación subió de 29.8\% a 31.9\%, y el sobreajuste empezó en la séptima época en lugar de la tercera. Con Dropout, usar más filtros en las convoluciones dio el mejor resultado (32.1\%). Los demás cambios movieron el acierto menos que la diferencia entre dos semillas (0.2 puntos).
+
+\subsection{Fuerza de juego (estimación preliminar)}
+\label{sec:fuerza}
+
+Para tener una primera idea del nivel del modelo, lo hice jugar contra una escalera de rivales:
+\begin{itemize}[leftmargin=*]
+	\item una jugada legal al azar;
+	\item una regla que siempre hace la captura de mayor valor, la misma línea base de antes, ahora como jugador;
+	\item Stockfish limitado a buscar a una sola jugada de profundidad;
+	\item las redes Maia de 1100, 1500 y 1900, que imitan a jugadores de esos niveles y juegan sin buscar;
+	\item Stockfish con su fuerza limitada a 1320, el nivel más bajo que permite.
+\end{itemize}
+Cada pareja jugó desde 20 aperturas, una vez con cada color. Cada apertura es la secuencia de 8 \textit{plies} más frecuente de una de las 20 familias más jugadas del conjunto. Cada rival jugó 40 partidas contra sus vecinos de la escalera. El modelo jugó 10 contra cada rival y completó 40 contra los que le hicieron entre el 10\% y el 90\% de los puntos. En total fueron 600 partidas.
+\newline
+Con todas ellas estimé el Elo de cada jugador por máxima verosimilitud con el modelo logístico del Elo, contando las tablas como medio punto y fijando a Stockfish 1320 en 1320 (tabla~\ref{tab:elo}). Por eso todos los números están en la escala de Stockfish, que no es la del rating de Lichess.
+
+\begin{table}[H]
+	\centering
+	\footnotesize
+	\setlength{\tabcolsep}{3pt}
+	\begin{tabular}{lrrr}
+		\hline
+		Jugador & Elo & IC 95\% & Modelo \\
+		\hline
+		Azar & 940 & 813--1067 & 79 (40) \\
+		Captura & 1004 & 887--1120 & 64 (40) \\
+		\textbf{Modelo} & \textbf{1125} & \textbf{1017--1232} & -- \\
+		Stockfish 1320 & 1320 & ancla & 5 (10) \\
+		Maia 1100 & 1356 & 1278--1435 & 0 (10) \\
+		Maia 1500 & 1421 & 1346--1496 & 5 (10) \\
+		Stockfish prof.~1 & 1486 & 1391--1582 & 21 (40) \\
+		Maia 1900 & 1537 & 1444--1629 & 0 (10) \\
+		\hline
+	\end{tabular}
+	\caption{Elo estimado de cada jugador en la escala de Stockfish, con su intervalo de confianza del 95\%, y porcentaje de los puntos que hizo el modelo contra él (entre paréntesis, el número de partidas). «Captura»: captura de mayor valor; «prof.~1»: profundidad 1.}
+	\label{tab:elo}
+\end{table}
+
+El modelo queda en 1125, con un intervalo de 1017 a 1232: por encima del azar y de la regla de capturas, y claramente por debajo de Maia y de Stockfish 1320, contra los que hizo entre el 0\% y el 5\% de los puntos. La estimación es preliminar por dos razones. Primero, entre los rivales débiles y los fuertes casi no hay partidas parejas, así que el resultado depende mucho de Stockfish a profundidad 1, que se comporta distinto a los demás: le gana a Maia, pero contra el modelo empata 17 de 40 partidas por repetición. Sin ese rival, la estimación baja a 970, con un intervalo de $\pm$164. Segundo, el modelo no sabe rematar: contra el azar ganó 23 partidas por mate, pero empató 9 por ahogado y 8 por repetición o por la regla de las 50 jugadas, siempre con al menos 15 puntos de material de ventaja.
 
 % =====================================================================
 \onecolumn

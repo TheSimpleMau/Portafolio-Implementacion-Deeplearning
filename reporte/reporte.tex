@@ -713,46 +713,7 @@ Sin descartar las jugadas ilegales, solo el 2.6\% de sus primeras opciones es il
 
 \subsection{Pruebas para reducir el sobreajuste}
 
-Como el problema principal es el sobreajuste, probé varios cambios, uno a la vez. Para que cada prueba tardara minutos y no horas, usé 250 mil posiciones de entrenamiento y 100 mil de validación (siempre las mismas), hasta 8 épocas y \textit{EarlyStopping}, que detiene el entrenamiento cuando la pérdida en validación lleva dos épocas sin mejorar. Con estos datos el modelo sobreajusta igual que con el conjunto completo, desde la tercera época. Repetí dos pruebas con otra semilla y el \textit{top-1} cambió a lo más 0.2 puntos, así que no tomo en cuenta diferencias menores. La tabla~\ref{tab:pruebas} resume los resultados.
-
-\begin{table*}[t]
-	\centering
-	\footnotesize
-	\setlength{\tabcolsep}{4pt}
-	\begin{tabular}{lrrrrrr}
-		\hline
-		Cambio frente al primer modelo & Pérdida (val) & \textit{Top-1} & Apertura & Medio & Final & Ilegal \\
-		\hline
-		Ninguno & 2.894 & 29.8 & 45.3 & 22.8 & 23.5 & 7.5 \\
-		\hline
-		Dropout 0.3 tras la primera densa & 2.832 & 30.7 & 45.7 & 23.9 & 24.2 & 7.1 \\
-		Dropout 0.5 tras la primera densa & 2.803 & 31.4 & 46.4 & 24.6 & 25.4 & 6.5 \\
-		Dropout 0.6 tras la primera densa & 2.805 & 31.9 & 46.7 & 25.0 & \textbf{26.8} & 6.4 \\
-		Dropout 0.7 tras la primera densa & 2.832 & 31.6 & 46.2 & 24.9 & 26.1 & 6.4 \\
-		Dropout 0.3 antes de la primera densa & 2.889 & 29.7 & 45.3 & 22.7 & 23.1 & 7.9 \\
-		\hline
-		Tasa de aprendizaje $3\times10^{-4}$ (base: $10^{-3}$) & 2.872 & 29.7 & 45.0 & 22.9 & 23.0 & 8.5 \\
-		Lote de 256 & 2.891 & 29.6 & 44.4 & 23.0 & 22.8 & 8.1 \\
-		Lote de 1,024 & 2.898 & 29.8 & 45.5 & 22.8 & 22.5 & 7.8 \\
-		Primera densa de 512 & 2.923 & 29.5 & 44.2 & 22.8 & 23.4 & 7.8 \\
-		Filtros 32 y 64 & 2.934 & 29.1 & 44.6 & 22.0 & 23.0 & 8.0 \\
-		\hline
-		Dropout 0.5 y primera densa de 2,048 & 2.779 & 31.6 & 46.7 & 24.8 & 25.4 & 6.6 \\
-		Dropout 0.5 y filtros 128 y 256 & \textbf{2.771} & \textbf{32.1} & \textbf{46.7} & \textbf{25.4} & 26.4 & \textbf{6.1} \\
-		\hline
-	\end{tabular}
-	\caption{Pruebas con 250 mil posiciones de entrenamiento y 100 mil de validación (\%, salvo la pérdida). Cada fila cambia solo lo que indica. En negritas, el mejor valor de cada columna.}
-	\label{tab:pruebas}
-\end{table*}
-
-\begin{itemize}[leftmargin=*]
-	\item \textbf{Dropout} apaga al azar una fracción de las neuronas en cada paso del entrenamiento, para que la red no dependa de unas pocas. Colocado después de la primera capa densa fue lo único que mejoró el modelo, y mejoró más con tasas más altas, hasta 0.6 (2.1 puntos más de \textit{top-1}). Mejoró todas las fases y retrasó el sobreajuste de la tercera a la séptima época. Colocado antes de esa capa no tuvo efecto.
-	\item \textbf{Ningún hiperparámetro mejoró por sí solo.} Cambiar la tasa de aprendizaje o el tamaño del lote solo movió la época en la que aparece el sobreajuste, y reducir la red empeoró un poco el acierto.
-	\item \textbf{La normalización por lotes} (\textit{batch normalization}), que probé aparte con 400 mil posiciones, hizo cada época 30\% más lenta y sobreajustó antes, sin mejorar el acierto, así que la descarté.
-	\item \textbf{Con Dropout, agregar capacidad sí ayudó:} con más filtros en las convoluciones obtuve el mejor resultado (32.1\% frente a 29.8\%), aunque cada época tarda el doble.
-\end{itemize}
-
-El siguiente paso es entrenar con el conjunto completo las tres mejores configuraciones (Dropout 0.5 con más filtros, Dropout 0.6 y Dropout 0.5 con la capa densa más ancha) para elegir el modelo final.
+Para reducir el sobreajuste probé varios cambios, uno a la vez, con una muestra de 250 mil posiciones de entrenamiento y 100 mil de validación: Dropout con tasas de 0.3 a 0.7, antes y después de la primera capa densa; normalización por lotes; una tasa de aprendizaje menor; lotes de 256 y de 1,024; y redes más pequeñas. Solo mejoró el Dropout después de la primera capa densa: con una tasa de 0.6, el \textit{top-1} en validación subió de 29.8\% a 31.9\%, y el sobreajuste empezó en la séptima época en lugar de la tercera. Con Dropout, usar más filtros en las convoluciones dio el mejor resultado (32.1\%). Los demás cambios movieron el acierto menos que la diferencia entre dos semillas (0.2 puntos).
 
 % =====================================================================
 \onecolumn

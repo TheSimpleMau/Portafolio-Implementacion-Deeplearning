@@ -1,11 +1,15 @@
+import collections
 import io
 import json
 import os
+import sys
 import time
 
 import chess
 import chess.pgn
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import zstandard
 
 from model.preprocessing import encode_move, encode_position, legal_moves_info
@@ -15,6 +19,17 @@ MONTH = "2026-09"
 RAW_DATA_PATH = f"data/raw/lichess_db_standard_rated_{MONTH}.pgn.zst"
 PROCESSED_PATH = f"data/processed/positions_{MONTH}.npz"
 SUMMARY_PATH = f"data/processed/positions_{MONTH}_resumen.json"
+# Partidas del crudo que pasan los filtros por cabeceras, en el mismo orden (~30 veces más liviano).
+FILTERED_PATH = f"data/processed/games_{MONTH}.parquet"
+FILTER_SUMMARY_PATH = f"data/processed/games_{MONTH}_filtros.json"
+# Cabeceras de Lichess, en su orden; cada una es una columna del Parquet.
+HEADER_KEYS = (
+    "Event", "Site", "Date", "Round", "White", "Black", "Result", "UTCDate", "UTCTime",
+    "WhiteElo", "BlackElo", "WhiteRatingDiff", "BlackRatingDiff", "WhiteTitle", "BlackTitle",
+    "ECO", "Opening", "TimeControl", "Termination",
+)
+FILTER_COUNTERS = ("partidas_leidas", "bullet", "bot", "sin_elo", "elo_bajo")
+PARQUET_BATCH = 100_000
 
 POSITIONS_PER_GAME = 12
 # También excluye UltraBullet.
@@ -68,6 +83,59 @@ def _header_discard_reason(headers, min_elo):
     if min(elos) < min_elo:
         return "elo_bajo"
     return None
+
+
+def filter_raw(raw_path=RAW_DATA_PATH, filtered_path=FILTERED_PATH,
+               summary_path=FILTER_SUMMARY_PATH, min_elo=MIN_ELO):
+    """Guarda en Parquet las partidas que pasan los filtros por cabeceras: cabeceras + jugadas."""
+    schema = pa.schema([(key, pa.string()) for key in HEADER_KEYS + ("movetext",)])
+    counters = {name: 0 for name in FILTER_COUNTERS}
+    counters["partidas_guardadas"] = 0
+    unknown = collections.Counter()
+    rows = {name: [] for name in schema.names}
+    started = time.perf_counter()
+
+    def flush(writer):
+        writer.write_table(pa.table(rows, schema=schema))
+        for column in rows.values():
+            column.clear()
+
+    os.makedirs(os.path.dirname(filtered_path) or ".", exist_ok=True)
+    with pq.ParquetWriter(filtered_path, schema, compression="zstd") as writer:
+        for headers, pgn in read_games(raw_path):
+            counters["partidas_leidas"] += 1
+            if counters["partidas_leidas"] % (100 * PROGRESS_EVERY) == 0:
+                print(f"{counters['partidas_leidas']:,} partidas leídas, "
+                      f"{counters['partidas_guardadas']:,} guardadas ({time.perf_counter() - started:.0f} s)")
+            reason = _header_discard_reason(headers, min_elo)
+            if reason:
+                counters[reason] += 1
+                continue
+            counters["partidas_guardadas"] += 1
+            unknown.update(key for key in headers if key not in HEADER_KEYS)
+            for key in HEADER_KEYS:
+                rows[key].append(headers.get(key))
+            rows["movetext"].append(pgn.partition("\n\n")[2].strip())
+            if len(rows["movetext"]) == PARQUET_BATCH:
+                flush(writer)
+        if rows["movetext"]:
+            flush(writer)
+
+    counters["cabeceras_desconocidas"] = dict(unknown)
+    counters["duracion_segundos"] = round(time.perf_counter() - started, 1)
+    with open(summary_path, "w", encoding="utf-8") as file:
+        json.dump(counters, file, indent=2, ensure_ascii=False)
+    return counters
+
+
+def read_filtered_games(path=FILTERED_PATH):
+    """Igual que read_games, pero desde el Parquet: (cabeceras, texto de la partida)."""
+    for batch in pq.ParquetFile(path).iter_batches(batch_size=PARQUET_BATCH):
+        columns = batch.to_pydict()
+        for i, movetext in enumerate(columns["movetext"]):
+            headers = {key: columns[key][i] for key in HEADER_KEYS if columns[key][i] is not None}
+            text = "".join(f'[{key} "{value}"]\n' for key, value in headers.items())
+            yield headers, f"{text}\n{movetext}\n\n"
 
 
 def _game_discard_reason(game):
@@ -209,14 +277,24 @@ def split_data(game_ids, train_fraction=TRAIN_FRACTION, val_fraction=VAL_FRACTIO
     return tuple(np.flatnonzero(position_split == split) for split in range(3))
 
 
-def run_etl(raw_path=RAW_DATA_PATH, processed_path=PROCESSED_PATH):
+def run_etl(raw_path=RAW_DATA_PATH, processed_path=PROCESSED_PATH, filtered_path=FILTERED_PATH,
+            summary_path=SUMMARY_PATH, filter_summary_path=FILTER_SUMMARY_PATH):
     if os.path.exists(processed_path):
         print("Datos ya transformados. Saltando transformación.")
         return load_data(processed_path)
 
-    print(f"Leyendo {raw_path}...")
-    data, counters = transform_data(read_games(raw_path))
-    save_data(data, counters, processed_path)
+    if os.path.exists(filtered_path):
+        print(f"Leyendo {filtered_path}...")
+        data, counters = transform_data(read_filtered_games(filtered_path))
+        # Los contadores de los filtros por cabeceras vienen de la pasada por el crudo.
+        with open(filter_summary_path, encoding="utf-8") as file:
+            raw_counters = json.load(file)
+        for name in FILTER_COUNTERS:
+            counters[name] = raw_counters[name] + (counters[name] if name != "partidas_leidas" else 0)
+    else:
+        print(f"Leyendo {raw_path}...")
+        data, counters = transform_data(read_games(raw_path))
+    save_data(data, counters, processed_path, summary_path)
     print("\nResumen del ETL:")
     for name, value in counters.items():
         print(f"  {name}: {value:,}")
@@ -225,6 +303,9 @@ def run_etl(raw_path=RAW_DATA_PATH, processed_path=PROCESSED_PATH):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["filtrar"]:
+        print(json.dumps(filter_raw(), indent=2, ensure_ascii=False))
+        sys.exit()
     data = run_etl()
     train, val, test = split_data(data["game_id"])
     print("\nPosiciones por conjunto (split por partida):")

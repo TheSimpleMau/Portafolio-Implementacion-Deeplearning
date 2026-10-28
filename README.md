@@ -11,13 +11,24 @@ Entrenar con TensorFlow/Keras una red neuronal convolucional que, dada una posic
 
 ## Dataset
 
-Partidas de la [Lichess Open Database](https://database.lichess.org/) (licencia CC0), archivo `lichess_db_standard_rated_2013-03.pgn.zst`. El conjunto se divide por partida, no por posición, para evitar fuga de datos entre entrenamiento, validación y prueba.
+Partidas de la [Lichess Open Database](https://database.lichess.org/) (licencia CC0), archivo `lichess_db_standard_rated_2026-09.pgn.zst` (partidas que no son Bullet entre jugadores humanos con Elo de 2,200 o más). El conjunto se divide por partida, no por posición, para evitar fuga de datos entre entrenamiento, validación y prueba.
 
 ## Entorno
 
+El entorno vive dentro del proyecto, en `.venv/` (ignorado por git), y se crea una sola vez:
+
 ```bash
 uv venv --python 3.12 .venv
+```
+
+```bash
 uv pip install --python .venv/bin/python -r requirements.txt
+```
+
+Después basta activarlo en cada terminal nueva, desde la carpeta del proyecto:
+
+```bash
+source .venv/bin/activate
 ```
 
 Los datos se descargan manualmente a `data/raw/` (la carpeta está ignorada por git).
@@ -29,6 +40,11 @@ model/   # todo lo del modelo
   preprocessing.py   # tablero y jugadas a tensores (4,096 clases)
   etlProcess.py      # PGN.zst de Lichess a posiciones, filtros y división por partida
   eda.py, plotUtil.py
+  evaluation.py      # precisión top-k entre jugadas legales y líneas base
+  chessModels.py     # arquitecturas
+  experiment.py      # entrenamiento por lotes y evaluación en validación
+  experimentStorage.py  # resultados en resultados/
+main.py  # entrena y evalúa el modelo
 game/    # jugar contra el modelo
   players.py         # jugadores: modelo, Stockfish y azar
   match.py           # partidas CPU vs CPU sin ventana y PGN
@@ -38,11 +54,17 @@ tests/   # pytest
 
 ## Uso
 
+Con el entorno activado:
+
 ```bash
-.venv/bin/python -m model.etlProcess   # ETL (los datos crudos van en data/raw/)
-.venv/bin/python -m model.eda          # gráficas del análisis exploratorio en graficas/
-.venv/bin/python -m pytest -q
+python main.py                # entrena y evalúa las corridas de EXPERIMENTS; la configuración está al inicio del archivo
+python -m model.etlProcess    # ETL (los datos crudos van en data/raw/)
+python -m model.eda           # gráficas del análisis exploratorio en graficas/
+python -m model.evaluation    # líneas base en validación
+pytest -q
 ```
+
+El mejor modelo (menor pérdida en validación) se guarda en `models/m1.keras`; las métricas, en `resultados/`, y las curvas, en `graficas/`.
 
 ## Jugar contra el modelo
 
@@ -53,7 +75,7 @@ brew install stockfish
 ```
 
 ```bash
-.venv/bin/python -m game.gui
+python -m game.gui
 ```
 
 - En el menú se eligen las blancas y las negras (Humano, Modelo, Stockfish o Azar), la fuerza de cada Stockfish por separado (Elo 1320 a 2800, o completo) y el modelo entre los archivos `.keras` de `models/`.

@@ -5,7 +5,7 @@ import numpy as np
 
 from model import eda, plotUtil
 from model.etlProcess import PROCESSED_PATH, RANDOM_STATE, load_data, split_data
-from model.preprocessing import N_CLASSES
+from model.preprocessing import N_CLASSES, expand_planes
 
 RESULTS_PATH = "resultados/lineas_base.json"
 KS = (1, 3, 5)
@@ -74,6 +74,32 @@ def phase_masks(ply, squares):
     masks.update({name: phase == code for code, name in enumerate(eda.PHASE_NAMES)})
     masks[f"sin los primeros {SKIPPED_PLIES} plies"] = ply >= SKIPPED_PLIES
     return masks
+
+
+def evaluate_model(model, data, idx, batch_size=4096):
+    """Top-k del modelo entre las legales, por corte, y % de top-1 ilegal sin máscara.
+
+    Predice por lotes y de cada uno guarda solo las columnas legales: la matriz completa
+    de validación (450 mil × 4,096) no cabe en memoria.
+    """
+    ranks, illegal = [], []
+    for start in range(0, len(idx), batch_size):
+        batch = idx[start:start + batch_size]
+        x = expand_planes(data["squares"][batch], data["castling"][batch], data["ep"][batch])
+        probs = model.predict(x.astype(np.float32), verbose=0)
+        offsets, legal_moves, _ = subset_legal(data["legal_offsets"], data["legal_moves"],
+                                               data["legal_capture"], batch)
+        owner = np.repeat(np.arange(len(batch)), np.diff(offsets))
+        ranks.append(played_rank(probs[owner, legal_moves], offsets, legal_moves, data["move"][batch]))
+        top1_is_legal = legal_moves == probs.argmax(axis=1)[owner]
+        illegal.append(np.bincount(owner, weights=top1_is_legal, minlength=len(batch)) == 0)
+    ranks, illegal = np.concatenate(ranks), np.concatenate(illegal)
+
+    results = {"por_corte": {}}
+    for cut, mask in phase_masks(data["ply"][idx], data["squares"][idx]).items():
+        results["por_corte"][cut] = {"posiciones": int(mask.sum()), **topk_accuracy(ranks[mask]),
+                                     "top1_ilegal": float(illegal[mask].mean())}
+    return results
 
 
 def run_baselines(path=PROCESSED_PATH, results_path=RESULTS_PATH, seed=RANDOM_STATE):

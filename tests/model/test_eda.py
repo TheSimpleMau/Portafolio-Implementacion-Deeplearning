@@ -1,4 +1,7 @@
+import io
+
 import chess
+import chess.pgn
 import numpy as np
 
 from model import eda
@@ -50,3 +53,18 @@ def test_repetidas_solo_cuentan_entre_partidas_distintas():
     keys = np.array([0, 0, 1, 1, 2])
     game_id = np.array([0, 1, 2, 2, 3])  # la llave 1 se repite dentro de la misma partida
     assert eda.repeated_across_games(keys, game_id).tolist() == [True, True, False, False, False]
+
+
+def test_jugadas_del_texto_coinciden_con_python_chess():
+    rng = np.random.default_rng(0)
+    game = chess.pgn.Game()
+    node, board = game, chess.Board()
+    while board.ply() < 60 and not board.is_game_over():
+        move = list(board.legal_moves)[rng.integers(board.legal_moves.count())]
+        node = node.add_variation(move, comment=f"[%clk 0:02:{59 - board.ply() % 60:02d}]")
+        board.push(move)
+    lichess = "1. e4 { [%eval 0.2] [%clk 0:03:00] } 1... c5?! { [%clk 0:03:00] } 2. Nf3 $1 2... d6?? 1-0"
+
+    for text in (str(game).partition("\n\n")[2], lichess):
+        expected = [node.san() for node in chess.pgn.read_game(io.StringIO(text)).mainline()]
+        assert eda.game_moves(text) == expected

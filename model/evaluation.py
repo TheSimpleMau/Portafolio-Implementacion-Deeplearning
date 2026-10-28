@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 
 import numpy as np
 
@@ -11,6 +12,8 @@ RESULTS_PATH = "resultados/lineas_base.json"
 KS = (1, 3, 5)
 SKIPPED_PLIES = 10  # protocolo de Maia: solo como referencia
 SPLIT_NAMES = ("train", "val")
+OPENINGS_RESULTS_PATH = "resultados/acierto_por_apertura.json"
+TOP_OPENING_FAMILIES = 10
 
 
 def subset_legal(legal_offsets, legal_moves, legal_capture, idx):
@@ -76,8 +79,8 @@ def phase_masks(ply, squares):
     return masks
 
 
-def evaluate_model(model, data, idx, batch_size=4096):
-    """Top-k del modelo entre las legales, por corte, y % de top-1 ilegal sin máscara.
+def model_ranks(model, data, idx, batch_size=4096):
+    """Rango de la jugada real entre las legales y si el top-1 sin máscara es ilegal.
 
     Predice por lotes y de cada uno guarda solo las columnas legales: la matriz completa
     de validación (450 mil × 4,096) no cabe en memoria.
@@ -93,8 +96,12 @@ def evaluate_model(model, data, idx, batch_size=4096):
         ranks.append(played_rank(probs[owner, legal_moves], offsets, legal_moves, data["move"][batch]))
         top1_is_legal = legal_moves == probs.argmax(axis=1)[owner]
         illegal.append(np.bincount(owner, weights=top1_is_legal, minlength=len(batch)) == 0)
-    ranks, illegal = np.concatenate(ranks), np.concatenate(illegal)
+    return np.concatenate(ranks), np.concatenate(illegal)
 
+
+def evaluate_model(model, data, idx, batch_size=4096):
+    """Top-k del modelo entre las legales, por corte, y % de top-1 ilegal sin máscara."""
+    ranks, illegal = model_ranks(model, data, idx, batch_size)
     results = {"por_corte": {}}
     for cut, mask in phase_masks(data["ply"][idx], data["squares"][idx]).items():
         results["por_corte"][cut] = {"posiciones": int(mask.sum()), **topk_accuracy(ranks[mask]),
@@ -102,14 +109,8 @@ def evaluate_model(model, data, idx, batch_size=4096):
     return results
 
 
-def run_baselines(path=PROCESSED_PATH, results_path=RESULTS_PATH, seed=RANDOM_STATE):
-    """Líneas base en validación (test no se toca) por fase, y comparación entre train y val."""
-    data = load_data(path)
-    train, val, _ = split_data(data["game_id"])
-
-    phase = eda.game_phase(data["ply"], eda.piece_count(data["squares"]))
-    plotUtil.split_comparison(data["elo"], data["ply"], phase, (train, val), SPLIT_NAMES, eda.PHASE_NAMES)
-
+def baseline_ranks(data, train, val, seed=RANDOM_STATE):
+    """Rangos de las líneas base en val y si cada posición de val ya aparece en train."""
     offsets, legal_moves, legal_capture = subset_legal(
         data["legal_offsets"], data["legal_moves"], data["legal_capture"], val)
     y = data["move"][val]
@@ -129,7 +130,18 @@ def run_baselines(path=PROCESSED_PATH, results_path=RESULTS_PATH, seed=RANDOM_ST
         "libro": played_rank(book_scores(val_keys, modes, offsets, legal_moves, frequency),
                              offsets, legal_moves, y),
     }
+    return ranks, in_train, offsets
 
+
+def run_baselines(path=PROCESSED_PATH, results_path=RESULTS_PATH, seed=RANDOM_STATE):
+    """Líneas base en validación (test no se toca) por fase, y comparación entre train y val."""
+    data = load_data(path)
+    train, val, _ = split_data(data["game_id"])
+
+    phase = eda.game_phase(data["ply"], eda.piece_count(data["squares"]))
+    plotUtil.split_comparison(data["elo"], data["ply"], phase, (train, val), SPLIT_NAMES, eda.PHASE_NAMES)
+
+    ranks, in_train, offsets = baseline_ranks(data, train, val, seed)
     results = {"posiciones_val": len(val), "por_corte": {}}
     for cut, mask in phase_masks(data["ply"][val], data["squares"][val]).items():
         cut_offsets = np.concatenate([[0], np.cumsum(np.diff(offsets)[mask])])
@@ -155,5 +167,45 @@ def print_table(results):
                 print(f"  {name:<24} {row}")
 
 
+def topk_by_group(ranks, groups, names, ks=KS):
+    """Top-k de las posiciones de cada grupo (groups = código de grupo por posición)."""
+    return {name: {"posiciones": int((groups == code).sum()), **topk_accuracy(ranks[groups == code], ks)}
+            for code, name in enumerate(names) if (groups == code).any()}
+
+
+def run_by_opening(model_path, path=PROCESSED_PATH, openings_path=eda.GAME_OPENINGS_PATH,
+                   results_path=OPENINGS_RESULTS_PATH, top_families=TOP_OPENING_FAMILIES):
+    """Top-k del modelo y del «libro» en val por grupo ECO y por las familias más jugadas."""
+    import keras  # TensorFlow tarda en cargar: solo se importa aquí
+
+    data = load_data(path)
+    train, val, _ = split_data(data["game_id"])
+    with np.load(openings_path) as file:
+        eco, family, family_names = file["eco"], file["family"], file["family_names"]
+    val_games = data["game_id"][val]
+
+    ranks = {"modelo": model_ranks(keras.models.load_model(model_path), data, val)[0],
+             "libro": baseline_ranks(data, train, val)[0]["libro"]}
+    group_names = eda.ECO_GROUPS + ("?",)
+    group_code = {group: code for code, group in enumerate(group_names)}
+    eco_group = np.array([group_code.get(code[:1], group_code["?"]) for code in eco])[val_games]
+    # Las familias vienen ordenadas de la más a la menos jugada; el resto queda en «otras».
+    val_family = np.minimum(family[val_games], top_families)
+    family_labels = tuple(family_names[:top_families]) + ("Otras",)
+
+    results = {"modelo": model_path, "posiciones_val": len(val)}
+    for cut, groups, names in (("grupo_eco", eco_group, group_names), ("familia", val_family, family_labels)):
+        results[cut] = {name: topk_by_group(rank, groups, names) for name, rank in ranks.items()}
+    plotUtil.accuracy_by_opening(results)
+
+    os.makedirs(os.path.dirname(results_path) or ".", exist_ok=True)
+    with open(results_path, "w", encoding="utf-8") as file:
+        json.dump(results, file, indent=2, ensure_ascii=False)
+    return results
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["aperturas"]:
+        print(json.dumps(run_by_opening(sys.argv[2]), indent=2, ensure_ascii=False))
+        sys.exit()
     print_table(run_baselines())

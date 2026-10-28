@@ -82,3 +82,12 @@ def test_evaluar_modelo_entre_legales_y_top1_ilegal():
     assert results["top1"] == pytest.approx(2 / 3)
     assert results["top3"] == pytest.approx(1.0)
     assert results["top1_ilegal"] == pytest.approx(1 / 3)
+
+
+def test_topk_por_grupo():
+    ranks = np.array([0, 2, 0, 5, 1, 0])
+    groups = np.array([0, 0, 1, 1, 1, 0])
+    result = evaluation.topk_by_group(ranks, groups, ("A", "B", "C"))
+    assert set(result) == {"A", "B"}
+    assert result["A"] == {"posiciones": 3, "top1": 2 / 3, "top3": 1.0, "top5": 1.0}
+    assert result["B"] == {"posiciones": 3, "top1": 1 / 3, "top3": 2 / 3, "top5": 2 / 3}

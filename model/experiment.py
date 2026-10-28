@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 from model import evaluation, experimentStorage, plotUtil
 from model.chessModels import compile_model, get_model
-from model.etlProcess import load_data, split_data
+from model.etlProcess import RANDOM_STATE, load_data, split_data
 from model.preprocessing import expand_planes
 
 PROGRESS_EVERY = 0.05  # fracción de la época entre líneas de avance
@@ -70,6 +70,10 @@ def steps(idx, batch_size):
 def train_model(model, data, train_idx, val_idx, config):
     checkpoint = ModelCheckpoint(filepath=config["model_path"], monitor="val_loss",
                                  save_best_only=True, verbose=1)
+    callbacks = [checkpoint]
+    if config["patience"]:
+        # El checkpoint ya guarda la mejor época: EarlyStopping solo corta la corrida cuando val_loss deja de mejorar.
+        callbacks.append(EarlyStopping(monitor="val_loss", patience=config["patience"], verbose=1))
     history = model.fit(batch_generator(data, train_idx, config["batch_size"], shuffle=True, seed=config["seed"],
                                         epochs=config["epochs"]),
                         steps_per_epoch=steps(train_idx, config["batch_size"]),
@@ -77,7 +81,7 @@ def train_model(model, data, train_idx, val_idx, config):
                         validation_steps=steps(val_idx, config["batch_size"]),
                         epochs=config["epochs"],
                         shuffle=False,  # el generador ya revuelve
-                        callbacks=[checkpoint],
+                        callbacks=callbacks,
                         verbose=2)
     return history
 
@@ -103,15 +107,20 @@ def print_metrics(metrics):
 
 
 def run_experiment(config):
+    tf.keras.backend.clear_session()
     tf.keras.utils.set_random_seed(config["seed"])
     data = load_data()
     train, val, test = split_data(data["game_id"])
     if config["train_limit"]:
         rng = np.random.default_rng(config["seed"])
         train = np.sort(rng.choice(train, config["train_limit"], replace=False))
+    if config["val_limit"]:
+        # Semilla fija: todas las corridas se comparan con la misma muestra de validación.
+        rng = np.random.default_rng(RANDOM_STATE)
+        val = np.sort(rng.choice(val, config["val_limit"], replace=False))
 
-    model = get_model()
-    compile_model(model)
+    model = get_model(**config["model"])
+    compile_model(model, config["learning_rate"])
     model.summary()
 
     start = time.time()
@@ -119,7 +128,7 @@ def run_experiment(config):
     minutes = (time.time() - start) / 60
 
     model = tf.keras.models.load_model(config["model_path"])
-    metrics = {"posiciones_train": len(train), "minutos": minutes, **training_summary(history),
+    metrics = {"posiciones_train": len(train), "posiciones_val": len(val), "minutos": minutes, **training_summary(history),
                **evaluation.evaluate_model(model, data, val)}
     if config["evaluate_test"]:
         metrics["test"] = evaluation.evaluate_model(model, data, test)

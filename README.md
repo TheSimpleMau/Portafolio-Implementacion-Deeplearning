@@ -57,7 +57,7 @@ tests/   # pytest
 Con el entorno activado:
 
 ```bash
-python main.py                # entrena el modelo; la configuración está al inicio del archivo
+python main.py                # entrena y evalúa las corridas de EXPERIMENTS; la configuración está al inicio del archivo
 python -m model.etlProcess    # ETL (los datos crudos van en data/raw/)
 python -m model.eda           # gráficas del análisis exploratorio en graficas/
 python -m model.evaluation    # líneas base en validación

@@ -647,6 +647,114 @@ Contra lo que esperaba en el análisis exploratorio, capturar la pieza más vali
 Con esto, el modelo tiene dos referencias claras: superar al «libro» en la apertura, donde se puede acertar de memoria, y superar a la captura de mayor valor en el resto de la partida, donde tiene que entender la posición.
 
 % =====================================================================
+\section{Primer modelo}
+\label{sec:modelo}
+
+\subsection{Arquitectura}
+
+Como primer modelo usé una red convolucional sencilla (tabla~\ref{tab:arquitectura}). Recibe el tablero con los 17 canales de la tabla~\ref{tab:canales}, siempre desde el punto de vista del bando que mueve, y devuelve una probabilidad para cada una de las 4,096 jugadas posibles. Las dos capas convolucionales usan filtros de $3\times3$ con relleno para conservar el tamaño de $8\times8$. No usé \textit{pooling}, porque en un tablero tan pequeño cada reducción borra casillas que importan. Casi todos los parámetros están en las dos capas densas.
+
+\begin{table}[H]
+	\centering
+	\footnotesize
+	\setlength{\tabcolsep}{2pt}
+	\begin{tabular}{lrr}
+		\hline
+		Capa & Salida & Parámetros \\
+		\hline
+		Conv. $3\times3$, 64 filtros & $8\times8\times64$ & 9,856 \\
+		Conv. $3\times3$, 128 filtros & $8\times8\times128$ & 73,856 \\
+		Aplanado & 8,192 & 0 \\
+		Densa de 1,024 & 1,024 & 8,389,632 \\
+		Densa de 4,096 & 4,096 & 4,198,400 \\
+		\hline
+		Total & & 12,671,744 \\
+		\hline
+	\end{tabular}
+	\caption{Arquitectura del primer modelo. Las capas convolucionales y la primera densa usan ReLU; la última, softmax.}
+	\label{tab:arquitectura}
+\end{table}
+
+\subsection{Entrenamiento}
+
+Entrené con las 3.6 millones de posiciones de entrenamiento, en lotes de 512, con Adam y durante 10 épocas; cada época tardó unos 12 minutos. La pérdida en validación baja hasta la tercera época (2.17) y después sube, mientras que en entrenamiento sigue bajando (figura~\ref{fig:curvas}): desde la cuarta época el modelo empieza a memorizar las posiciones de entrenamiento en lugar de aprender algo que sirva para posiciones nuevas. En la décima época acierta el 57.8\% en entrenamiento y solo el 36.3\% en validación. Por eso el modelo que evalúo es el de la tercera época, el que guardó \textit{ModelCheckpoint}.
+
+\begin{figure}[H]
+	\centering
+	\includegraphics[width=\columnwidth]{figuras/modelo_curvas.png}
+	\caption{Pérdida y precisión por época del primer modelo en entrenamiento y validación. La línea punteada marca la época de menor pérdida en validación.}
+	\label{fig:curvas}
+\end{figure}
+
+\subsection{Resultados en validación}
+
+El modelo acierta la jugada del jugador en el 39.2\% de las posiciones de validación y la tiene entre sus cinco primeras opciones en el 77.0\% (tabla~\ref{tab:resultados-modelo}). Supera a las líneas base en todas las fases. En la apertura (51.7\%) supera al «libro» (42.8\%), así que hace algo más que recordar aperturas; en el medio juego y en el final casi duplica a la captura de mayor valor.
+\newline
+Sin descartar las jugadas ilegales, solo el 2.6\% de sus primeras opciones es ilegal, así que aprendió casi todas las reglas de movimiento. Esos errores se concentran en el final (5.7\%), la fase con menos posiciones para aprender.
+
+\begin{table}[H]
+	\centering
+	\footnotesize
+	\setlength{\tabcolsep}{3pt}
+	\begin{tabular}{lrrrrr}
+		\hline
+		Corte & \textit{Top-1} & \textit{Top-3} & \textit{Top-5} & \shortstack[r]{Línea\\base} & Ilegal \\
+		\hline
+		Todas & 39.2 & 65.8 & 77.0 & 18.7 & 2.6 \\
+		Apertura & 51.7 & 80.9 & 90.6 & 42.8 & 0.2 \\
+		Medio juego & 33.3 & 58.4 & 70.2 & 17.5 & 3.3 \\
+		Final & 35.4 & 63.1 & 75.8 & 20.5 & 5.7 \\
+		Sin 10 \textit{plies} & 36.4 & 62.3 & 73.9 & 16.7 & 3.0 \\
+		\hline
+	\end{tabular}
+	\caption{Acierto del primer modelo en validación (\%), frente al \textit{top-1} de la mejor línea base de cada corte (tabla~\ref{tab:lineas-base}). «Sin 10 \textit{plies}»: sin los primeros 10 \textit{plies}. «Ilegal»: primeras opciones ilegales antes de descartarlas.}
+	\label{tab:resultados-modelo}
+\end{table}
+
+\subsection{Pruebas para reducir el sobreajuste}
+
+Como el problema principal es el sobreajuste, probé varios cambios, uno a la vez. Para que cada prueba tardara minutos y no horas, usé 250 mil posiciones de entrenamiento y 100 mil de validación (siempre las mismas), hasta 8 épocas y \textit{EarlyStopping}, que detiene el entrenamiento cuando la pérdida en validación lleva dos épocas sin mejorar. Con estos datos el modelo sobreajusta igual que con el conjunto completo, desde la tercera época. Repetí dos pruebas con otra semilla y el \textit{top-1} cambió a lo más 0.2 puntos, así que no tomo en cuenta diferencias menores. La tabla~\ref{tab:pruebas} resume los resultados.
+
+\begin{table*}[t]
+	\centering
+	\footnotesize
+	\setlength{\tabcolsep}{4pt}
+	\begin{tabular}{lrrrrrr}
+		\hline
+		Cambio frente al primer modelo & Pérdida (val) & \textit{Top-1} & Apertura & Medio & Final & Ilegal \\
+		\hline
+		Ninguno & 2.894 & 29.8 & 45.3 & 22.8 & 23.5 & 7.5 \\
+		\hline
+		Dropout 0.3 tras la primera densa & 2.832 & 30.7 & 45.7 & 23.9 & 24.2 & 7.1 \\
+		Dropout 0.5 tras la primera densa & 2.803 & 31.4 & 46.4 & 24.6 & 25.4 & 6.5 \\
+		Dropout 0.6 tras la primera densa & 2.805 & 31.9 & 46.7 & 25.0 & \textbf{26.8} & 6.4 \\
+		Dropout 0.7 tras la primera densa & 2.832 & 31.6 & 46.2 & 24.9 & 26.1 & 6.4 \\
+		Dropout 0.3 antes de la primera densa & 2.889 & 29.7 & 45.3 & 22.7 & 23.1 & 7.9 \\
+		\hline
+		Tasa de aprendizaje $3\times10^{-4}$ (base: $10^{-3}$) & 2.872 & 29.7 & 45.0 & 22.9 & 23.0 & 8.5 \\
+		Lote de 256 & 2.891 & 29.6 & 44.4 & 23.0 & 22.8 & 8.1 \\
+		Lote de 1,024 & 2.898 & 29.8 & 45.5 & 22.8 & 22.5 & 7.8 \\
+		Primera densa de 512 & 2.923 & 29.5 & 44.2 & 22.8 & 23.4 & 7.8 \\
+		Filtros 32 y 64 & 2.934 & 29.1 & 44.6 & 22.0 & 23.0 & 8.0 \\
+		\hline
+		Dropout 0.5 y primera densa de 2,048 & 2.779 & 31.6 & 46.7 & 24.8 & 25.4 & 6.6 \\
+		Dropout 0.5 y filtros 128 y 256 & \textbf{2.771} & \textbf{32.1} & \textbf{46.7} & \textbf{25.4} & 26.4 & \textbf{6.1} \\
+		\hline
+	\end{tabular}
+	\caption{Pruebas con 250 mil posiciones de entrenamiento y 100 mil de validación (\%, salvo la pérdida). Cada fila cambia solo lo que indica. En negritas, el mejor valor de cada columna.}
+	\label{tab:pruebas}
+\end{table*}
+
+\begin{itemize}[leftmargin=*]
+	\item \textbf{Dropout} apaga al azar una fracción de las neuronas en cada paso del entrenamiento, para que la red no dependa de unas pocas. Colocado después de la primera capa densa fue lo único que mejoró el modelo, y mejoró más con tasas más altas, hasta 0.6 (2.1 puntos más de \textit{top-1}). Mejoró todas las fases y retrasó el sobreajuste de la tercera a la séptima época. Colocado antes de esa capa no tuvo efecto.
+	\item \textbf{Ningún hiperparámetro mejoró por sí solo.} Cambiar la tasa de aprendizaje o el tamaño del lote solo movió la época en la que aparece el sobreajuste, y reducir la red empeoró un poco el acierto.
+	\item \textbf{La normalización por lotes} (\textit{batch normalization}), que probé aparte con 400 mil posiciones, hizo cada época 30\% más lenta y sobreajustó antes, sin mejorar el acierto, así que la descarté.
+	\item \textbf{Con Dropout, agregar capacidad sí ayudó:} con más filtros en las convoluciones obtuve el mejor resultado (32.1\% frente a 29.8\%), aunque cada época tarda el doble.
+\end{itemize}
+
+El siguiente paso es entrenar con el conjunto completo las tres mejores configuraciones (Dropout 0.5 con más filtros, Dropout 0.6 y Dropout 0.5 con la capa densa más ancha) para elegir el modelo final.
+
+% =====================================================================
 \onecolumn
 \section{Códigos}
 

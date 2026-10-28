@@ -39,7 +39,7 @@ EXCLUDED_TITLES = ("BOT",)
 # Elo mínimo de ambos jugadores.
 MIN_ELO = 2200
 # Fracción de las partidas que pasan los filtros que se analizan.
-GAME_SAMPLE_RATE = 0.25
+GAME_SAMPLE_RATE = 1.0
 # Pico en 1500: probablemente jugadores nuevos con la calificación inicial.
 EXCLUDED_MOVER_ELOS = (1500,)
 
@@ -49,6 +49,8 @@ TEST_FRACTION = 0.1
 RANDOM_STATE = 42
 
 PROGRESS_EVERY = 10_000
+# Partidas usadas entre cada paso de las listas a arreglos: las listas de Python ocupan ~1 GB por millón de posiciones.
+BLOCK_GAMES = 100_000
 
 
 def read_games(path):
@@ -146,9 +148,28 @@ def _game_discard_reason(game):
     return None
 
 
+def _block_arrays(columns, legal_moves, legal_capture, legal_counts):
+    """Pasa las posiciones acumuladas a arreglos compactos y vacía las listas."""
+    block = {
+        "squares": np.stack(columns["squares"]).astype(np.int8),
+        "castling": np.array(columns["castling"], dtype=np.uint8),
+        "ep": np.array(columns["ep"], dtype=np.int8),
+        "move": np.array(columns["move"], dtype=np.int16),
+        "game_id": np.array(columns["game_id"], dtype=np.int32),
+        "ply": np.array(columns["ply"], dtype=np.int16),
+        "elo": np.array(columns["elo"], dtype=np.int16),
+        "legal_counts": np.array(legal_counts, dtype=np.int64),
+        "legal_moves": np.concatenate(legal_moves).astype(np.int16),
+        "legal_capture": np.concatenate(legal_capture).astype(np.int8),
+    }
+    for values in (*columns.values(), legal_moves, legal_capture, legal_counts):
+        values.clear()
+    return block
+
+
 def transform_data(games, positions_per_game=POSITIONS_PER_GAME, min_elo=MIN_ELO,
                    game_sample_rate=GAME_SAMPLE_RATE, random_state=RANDOM_STATE,
-                   max_games=None):
+                   max_games=None, block_games=BLOCK_GAMES):
     rng = np.random.default_rng(random_state)
     counters = {
         "partidas_leidas": 0,
@@ -165,6 +186,7 @@ def transform_data(games, positions_per_game=POSITIONS_PER_GAME, min_elo=MIN_ELO
     }
     columns = {name: [] for name in ("squares", "castling", "ep", "move", "game_id", "ply", "elo")}
     legal_moves, legal_capture, legal_counts = [], [], []
+    blocks = []
     started = time.perf_counter()
 
     for headers, pgn in games:
@@ -227,19 +249,14 @@ def transform_data(games, positions_per_game=POSITIONS_PER_GAME, min_elo=MIN_ELO
             if ply == last_ply:
                 break
             board.push(move)
+        if counters["partidas_usadas"] % block_games == 0 and columns["move"]:
+            blocks.append(_block_arrays(columns, legal_moves, legal_capture, legal_counts))
 
-    data = {
-        "squares": np.stack(columns["squares"]).astype(np.int8),
-        "castling": np.array(columns["castling"], dtype=np.uint8),
-        "ep": np.array(columns["ep"], dtype=np.int8),
-        "move": np.array(columns["move"], dtype=np.int16),
-        "game_id": np.array(columns["game_id"], dtype=np.int32),
-        "ply": np.array(columns["ply"], dtype=np.int16),
-        "elo": np.array(columns["elo"], dtype=np.int16),
-        "legal_offsets": np.concatenate([[0], np.cumsum(legal_counts)]).astype(np.int64),
-        "legal_moves": np.concatenate(legal_moves).astype(np.int16),
-        "legal_capture": np.concatenate(legal_capture).astype(np.int8),
-    }
+    if columns["move"] or not blocks:
+        blocks.append(_block_arrays(columns, legal_moves, legal_capture, legal_counts))
+    # pop libera los arreglos de los bloques en cuanto se copian, para no tener dos veces el conjunto en memoria.
+    data = {key: np.concatenate([block.pop(key) for block in blocks]) for key in list(blocks[0])}
+    data["legal_offsets"] = np.concatenate([[0], np.cumsum(data.pop("legal_counts"))]).astype(np.int64)
     counters["posiciones"] = len(data["move"])
     counters["duracion_segundos"] = round(time.perf_counter() - started, 1)
     return data, counters

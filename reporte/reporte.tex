@@ -304,7 +304,7 @@ Para leer las partidas y generar las jugadas legales utilicé la biblioteca \tex
 
 El archivo se lee en \textit{streaming}: se descomprime por bloques y se procesa una partida a la vez. Así nunca se guarda el PGN descomprimido en disco, que en un mes reciente ocuparía cientos de gigabytes, ni se carga completo en memoria.
 \newline
-Reconstruir el tablero jugada por jugada es el paso más lento, y en un mes reciente la gran mayoría de las partidas se descarta. Por eso primero leo solo los encabezados de cada partida y aplico con ellos los filtros. Únicamente analizo las jugadas de las partidas que los pasan. Con esto, el mes completo se procesa en unos 25 minutos.
+Reconstruir el tablero jugada por jugada es el paso más lento, y en un mes reciente la gran mayoría de las partidas se descarta. Por eso primero leo solo los encabezados de cada partida y aplico con ellos los filtros. Únicamente analizo las jugadas de las partidas que los pasan. Con esto, filtrar el mes completo toma unos 10 minutos, y transformar las partidas que pasan los filtros, unos 40.
 
 \subsubsection{\textit{Transforming}}
 
@@ -315,8 +315,8 @@ Apliqué los filtros en este orden (tabla~\ref{tab:filtros}):
 	\item \textbf{Ritmo:} descarté las partidas Bullet y UltraBullet, porque con tan poco tiempo las jugadas son más impulsivas y menos representativas.
 	\item \textbf{Cuentas BOT:} descarté las partidas en las que juega alguna cuenta BOT. Son programas de ajedrez, y quiero que el modelo aprenda de jugadas humanas. Este filtro lo agregué a partir del análisis exploratorio (sección~\ref{sec:eda}).
 	\item \textbf{Nivel:} conservé solo las partidas en las que ambos jugadores tienen un Elo de 2,200 o más, para que el modelo aprenda de jugadores de nivel alto. Este filtro deja fuera a la gran mayoría de las partidas del mes.
-	\item \textbf{Muestra aleatoria:} las partidas que pasan los filtros anteriores son 1,507,816. Con 12 posiciones cada una serían unos 18 millones de posiciones, más de lo que mi computadora puede procesar con holgura y demasiado para entrenar en un tiempo razonable sin GPU. Por eso tomé al azar una de cada cuatro, con una semilla fija. Muestrear todo el mes, en lugar de quedarme con sus primeros días, evita que el conjunto dependa de unas fechas en particular.
 \end{itemize}
+Las 1,507,816 partidas que pasan los tres filtros las uso todas. Para no agotar la memoria de mi computadora, las transformo por bloques de 100 mil partidas, que voy uniendo al final.
 
 \begin{table}[H]
 	\centering
@@ -329,9 +329,8 @@ Apliqué los filtros en este orden (tabla~\ref{tab:filtros}):
 		Bullet o UltraBullet & 32,517,004 \\
 		Con alguna cuenta BOT & 325,060 \\
 		Algún jugador con Elo menor a 2,200 & 55,266,582 \\
-		Fuera de la muestra aleatoria & 1,130,890 \\
-		Sin jugadas & 468 \\
-		\textbf{Partidas utilizadas} & \textbf{376,458} \\
+		Sin jugadas & 2,023 \\
+		\textbf{Partidas utilizadas} & \textbf{1,505,793} \\
 		\hline
 	\end{tabular}
 	\caption{Partidas descartadas en cada filtro del mes de septiembre de 2026, en el orden en que se aplican. Las partidas BOT que también son Bullet se cuentan como Bullet.}
@@ -371,7 +370,7 @@ La etiqueta es la jugada que se jugó, codificada como un número entre 0 y 4,09
 \begin{equation*}
 	\text{clase} = 64 \times \text{origen} + \text{destino},
 \end{equation*}
-donde origen y destino son las casillas numeradas de 0 (a1) a 63 (h8), recorriendo cada fila de izquierda a derecha, ya en la orientación de quien mueve. Por ejemplo, 1.e4 (de e2, casilla 12, a e4, casilla 28) es la clase $64\times12+28=796$. Gracias a la orientación, 1.e4 de las blancas y 1\dots e5 de las negras tienen la misma clase. El enroque queda representado como un movimiento del rey de dos casillas. Las promociones se representan como promoción a dama; las 105 posiciones en las que se jugó una promoción a otra pieza se omitieron.
+donde origen y destino son las casillas numeradas de 0 (a1) a 63 (h8), recorriendo cada fila de izquierda a derecha, ya en la orientación de quien mueve. Por ejemplo, 1.e4 (de e2, casilla 12, a e4, casilla 28) es la clase $64\times12+28=796$. Gracias a la orientación, 1.e4 de las blancas y 1\dots e5 de las negras tienen la misma clase. El enroque queda representado como un movimiento del rey de dos casillas. Las promociones se representan como promoción a dama; las 468 posiciones en las que se jugó una promoción a otra pieza se omitieron.
 
 \paragraph{Jugadas legales}
 
@@ -379,7 +378,7 @@ Para cada posición guardo también la lista de sus jugadas legales y el valor d
 
 \paragraph{Muestreo de posiciones}
 
-Las posiciones consecutivas de una misma partida se parecen mucho entre sí, así que no tiene sentido usar todas. De cada partida tomé al azar 12 posiciones (o todas, si la partida es más corta), con una semilla fija para que el resultado sea reproducible. Después de omitir las subpromociones, el resultado fue de \textbf{4,505,669 posiciones}.
+Las posiciones consecutivas de una misma partida se parecen mucho entre sí, así que no tiene sentido usar todas. De cada partida tomé al azar 12 posiciones (o todas, si la partida es más corta), con una semilla fija para que el resultado sea reproducible. Después de omitir las subpromociones, el resultado fue de \textbf{18,022,575 posiciones}.
 
 \subsubsection{\textit{Loading}}
 
@@ -389,9 +388,9 @@ El conjunto procesado se guarda en disco para no repetir la transformación cada
 	\item[Derechos de enroque - entero de 0 a 15.] Cuatro bits, uno por cada enroque que todavía se puede hacer: corto y largo del jugador que mueve y corto y largo del rival.
 	\item[Captura al paso - entero de -1 a 7.] Columna, de a (0) a h (7), de la casilla en la que se puede capturar al paso, o -1 si no hay ninguna captura al paso legal. Como esa casilla siempre está en la sexta fila desde el punto de vista de quien mueve, basta con la columna.
 	\item[Jugada - entero de 0 a 4,095.] La jugada que se jugó en la posición, es decir, la etiqueta que debe predecir el modelo.
-	\item[Partida - entero.] Número de la partida de la que sale la posición, de 0 a 376,457, asignado en el orden en que se leyeron (no es el identificador de Lichess). Sirve para la división por partida.
-	\item[Ply - entero de 0 a 456.] Número de \textit{plies} que se jugaron antes de la posición, de modo que 0 es la posición inicial. Lo uso en el análisis exploratorio para estudiar las fases de la partida.
-	\item[Elo - entero de 2,200 a 3,010.] Elo del jugador que mueve, tomado de WhiteElo o de BlackElo según el turno. También lo uso en el análisis exploratorio.
+	\item[Partida - entero.] Número de la partida de la que sale la posición, de 0 a 1,505,792, asignado en el orden en que se leyeron (no es el identificador de Lichess). Sirve para la división por partida.
+	\item[Ply - entero de 0 a 599.] Número de \textit{plies} que se jugaron antes de la posición, de modo que 0 es la posición inicial. Lo uso en el análisis exploratorio para estudiar las fases de la partida.
+	\item[Elo - entero de 2,200 a 3,064.] Elo del jugador que mueve, tomado de WhiteElo o de BlackElo según el turno. También lo uso en el análisis exploratorio.
 	\item[Jugadas legales - lista de pares de enteros.] Cada jugada legal de la posición, codificada como la etiqueta, junto con el valor de la pieza que captura (0 si no captura). Su longitud cambia de una posición a otra.
 \end{description}
 Las tres primeras columnas no se guardan como canales: los de la tabla~\ref{tab:canales} se construyen a partir de ellas al momento de entrenar. La codificación de la jugada y los valores de captura son los de los párrafos de representación de la jugada y de jugadas legales.
@@ -405,9 +404,9 @@ La división en entrenamiento, validación y prueba se hace \textbf{por partida 
 		\hline
 		Conjunto & Partidas & Posiciones \\
 		\hline
-		\textit{Train} & 301,166 & 3,604,441 \\
-		\textit{Validation} & 37,645 & 450,591 \\
-		\textit{Test} & 37,647 & 450,637 \\
+		\textit{Train} & 1,204,634 & 14,418,292 \\
+		\textit{Validation} & 150,579 & 1,802,132 \\
+		\textit{Test} & 150,580 & 1,802,151 \\
 		\hline
 	\end{tabular}
 	\caption{División por partida con semilla 42.}
@@ -424,11 +423,11 @@ Como un error en la codificación invalidaría todos los resultados, escribí pr
 \section{Análisis exploratorio de los datos}
 \label{sec:eda}
 
-Antes de entrenar revisé el conjunto procesado (4,505,669 posiciones) para conocer a los jugadores, el momento de la partida en que ocurre cada posición, las jugadas que se eligen y qué tanto se repiten las posiciones entre partidas.
+Antes de entrenar revisé el conjunto procesado (18,022,575 posiciones) para conocer a los jugadores, el momento de la partida en que ocurre cada posición, las jugadas que se eligen y qué tanto se repiten las posiciones entre partidas.
 
 \subsection{Nivel de los jugadores}
 
-El Elo del jugador que mueve va de 2,213 a 2,585 en el 90\% central de las posiciones, con mediana de 2,327 y máximo de 3,010 (figura~\ref{fig:eda-elo}). El 29.0\% de las posiciones corresponde a jugadores con 2,400 o más y el 1.2\%, a jugadores con 2,700 o más.
+El Elo del jugador que mueve va de 2,213 a 2,584 en el 90\% central de las posiciones, con mediana de 2,326 y máximo de 3,064 (figura~\ref{fig:eda-elo}). El 29.1\% de las posiciones corresponde a jugadores con 2,400 o más y el 1.2\%, a jugadores con 2,700 o más.
 \newline
 En la primera versión de este histograma apareció un segundo pico alrededor de 3,000. Al revisar los encabezados encontré que eran cuentas BOT. En las primeras 28 horas del mes, el 5.7\% de las partidas que no son Bullet entre jugadores de 2,200 o más tenía al menos una cuenta BOT, casi siempre una contra otra, con un Elo mediano de 2,718. Como son jugadas de programas y no de personas, excluí esas partidas en el ETL.
 
@@ -443,7 +442,7 @@ En la primera versión de este histograma apareció un segundo pico alrededor de
 
 Las posiciones se concentran en los primeros \textit{plies} y su frecuencia baja conforme avanza la partida, porque muchas partidas terminan antes (figura~\ref{fig:eda-ply}); el \textit{ply} promedio es 39.1.
 \newline
-Para analizar los resultados por fase definí tres grupos. El \textbf{final} son las posiciones con 12 piezas o menos, contando a los reyes; la \textbf{apertura}, el resto de las posiciones antes del \textit{ply} 20 (diez jugadas de cada bando); y el \textbf{medio juego}, todo lo demás. Con esta definición, el 30.8\% de las posiciones es de apertura, el 60.1\% de medio juego y el 9.2\% de final (figura~\ref{fig:eda-fases}). Como el final tiene pocas posiciones, sus resultados tendrán más incertidumbre.
+Para analizar los resultados por fase definí tres grupos. El \textbf{final} son las posiciones con 12 piezas o menos, contando a los reyes; la \textbf{apertura}, el resto de las posiciones antes del \textit{ply} 20 (diez jugadas de cada bando); y el \textbf{medio juego}, todo lo demás. Con esta definición, el 30.7\% de las posiciones es de apertura, el 60.1\% de medio juego y el 9.2\% de final (figura~\ref{fig:eda-fases}). Como el final tiene pocas posiciones, sus resultados tendrán más incertidumbre.
 
 \begin{figure}[H]
 	\centering
@@ -461,7 +460,7 @@ Para analizar los resultados por fase definí tres grupos. El \textbf{final} son
 
 \subsection{Jugadas legales y la línea base del azar}
 
-Cada posición tiene en promedio \textbf{31.0 jugadas legales}, con un mínimo de 1 y un máximo de 100 (figura~\ref{fig:eda-legales}). El pico en 20 corresponde a la posición inicial y a otras posiciones de apertura muy parecidas. El 0.6\% de las posiciones tiene una sola jugada legal y el 4.0\%, cuatro o menos.
+Cada posición tiene en promedio \textbf{31.0 jugadas legales}, con un mínimo de 1 y un máximo de 113 (figura~\ref{fig:eda-legales}). El pico en 20 corresponde a la posición inicial y a otras posiciones de apertura muy parecidas. El 0.6\% de las posiciones tiene una sola jugada legal y el 4.0\%, cuatro o menos.
 \newline
 Si se elige una jugada legal al azar, se acierta el \textbf{5.4\%} de las veces en promedio. Es más que $1/31.0 \approx 3.2\%$ porque en las posiciones con pocas opciones, como las de jaque, el azar acierta mucho más. Esta es la primera línea base que el modelo debe superar.
 
@@ -474,7 +473,7 @@ Si se elige una jugada legal al azar, se acierta el \textbf{5.4\%} de las veces 
 
 \subsection{Las jugadas: clases, piezas y capturas}
 
-Solo aparecen 1,792 de las 4,096 clases posibles, porque muchas combinaciones de origen y destino no corresponden al movimiento de ninguna pieza. Además, las clases que sí aparecen están muy desbalanceadas. La figura~\ref{fig:eda-clases} ordena las jugadas de la más a la menos común y muestra qué porcentaje del total se acumula: las 74 jugadas más comunes ya son la mitad de todas las jugadas del conjunto, 348 son el 80\% y 989 el 95\%. Las otras 803 juntas apenas suman el 5\% restante. Esto significa que el modelo verá muchísimos ejemplos de unas pocas jugadas y muy pocos del resto.
+Solo aparecen 1,792 de las 4,096 clases posibles, porque muchas combinaciones de origen y destino no corresponden al movimiento de ninguna pieza. Además, las clases que sí aparecen están muy desbalanceadas. La figura~\ref{fig:eda-clases} ordena las jugadas de la más a la menos común y muestra qué porcentaje del total se acumula: las 74 jugadas más comunes ya son la mitad de todas las jugadas del conjunto, 348 son el 80\% y 990 el 95\%. Las otras 802 juntas apenas suman el 5\% restante. Esto significa que el modelo verá muchísimos ejemplos de unas pocas jugadas y muy pocos del resto.
 
 \begin{figure}[H]
 	\centering
@@ -483,7 +482,7 @@ Solo aparecen 1,792 de las 4,096 clases posibles, porque muchas combinaciones de
 	\label{fig:eda-clases}
 \end{figure}
 
-La pieza que más se mueve es el peón (29.2\%), seguida del caballo (18.4\%) y el alfil (15.6\%); la torre, la dama y el rey se mueven entre el 11.2\% y el 13.9\% de las veces (figura~\ref{fig:eda-piezas}).
+La pieza que más se mueve es el peón (29.2\%), seguida del caballo (18.4\%) y el alfil (15.6\%); la torre, la dama y el rey se mueven entre el 11\% y el 14\% de las veces (figura~\ref{fig:eda-piezas}).
 \newline
 El 22.3\% de las jugadas son capturas (figura~\ref{fig:eda-capturas}). En el 75.7\% de las posiciones hay al menos una captura disponible, pero solo en el 25.0\% de ellas se juega la captura de mayor valor. Por eso espero que la línea base de «capturar la pieza más valiosa» sea débil: la mayoría de las veces los jugadores no capturan aunque puedan.
 
@@ -505,9 +504,9 @@ El 22.3\% de las jugadas son capturas (figura~\ref{fig:eda-capturas}). En el 75.
 
 Como incluí las aperturas, quise saber cuántas posiciones aparecen idénticas (mismas piezas, derechos de enroque y captura al paso) en dos o más partidas distintas. Se repiten porque muchos jugadores juegan las mismas aperturas, y eso significa que una parte de lo que aprenda el modelo en esas posiciones puede ser memoria.
 \newline
-El 21.6\% de las posiciones aparece en al menos dos partidas. Casi todas son de apertura: ahí se repite el 68.0\% de las posiciones, mientras que en el resto de la partida solo el 1.0\%. Por \textit{ply}, la posición inicial se repite siempre, en el \textit{ply} 4 el 98.6\%, en el \textit{ply} 10 el 72.1\%, en el \textit{ply} 16 el 28.7\% y desde el \textit{ply} 26 menos del 2\% (figura~\ref{fig:eda-repetidas}).
+El 24.5\% de las posiciones aparece en al menos dos partidas. Casi todas son de apertura: ahí se repite el 75.6\% de las posiciones, mientras que en el resto de la partida solo el 1.9\%. Por \textit{ply}, la posición inicial se repite siempre, en el \textit{ply} 4 el 99.4\%, en el \textit{ply} 10 el 82.9\%, en el \textit{ply} 16 el 42.7\% y desde el \textit{ply} 28 menos del 2\% (figura~\ref{fig:eda-repetidas}).
 \newline
-En esas posiciones repetidas, la jugada más frecuente se elige el 62.1\% de las veces. Es decir, en una misma posición distintos jugadores eligen jugadas distintas, y ningún modelo que solo vea el tablero puede acertar todas: en estas posiciones, el acierto \textit{top-1} tiene un techo cercano al 62\%. En la posición inicial el techo es todavía más bajo, del 48.1\%, porque los jugadores reparten su primera jugada entre varias opciones (sección~\ref{sec:eda-aperturas}).
+En esas posiciones repetidas, la jugada más frecuente se elige el 62.3\% de las veces. Es decir, en una misma posición distintos jugadores eligen jugadas distintas, y ningún modelo que solo vea el tablero puede acertar todas: en estas posiciones, el acierto \textit{top-1} tiene un techo cercano al 62\%. En la posición inicial el techo es todavía más bajo, del 48.1\%, porque los jugadores reparten su primera jugada entre varias opciones (sección~\ref{sec:eda-aperturas}).
 
 \begin{figure}[H]
 	\centering
@@ -519,9 +518,9 @@ En esas posiciones repetidas, la jugada más frecuente se elige el 62.1\% de las
 \subsection{Aperturas y partidas}
 \label{sec:eda-aperturas}
 
-Las secciones anteriores describen posiciones; esta describe las 376,458 partidas de las que salen. Lichess anota en cada partida el código ECO y el nombre de su apertura con una tabla propia de 500 códigos y 3,177 nombres. Cada nombre tiene la forma «familia: variante», por ejemplo «Sicilian Defense: Najdorf Variation», y la tabla tiene 150 familias. En mis partidas aparecen 496 códigos, 2,625 nombres y 142 familias.
+Las secciones anteriores describen posiciones; esta describe las 1,505,793 partidas de las que salen. Lichess anota en cada partida el código ECO y el nombre de su apertura con una tabla propia de 500 códigos y 3,177 nombres. Cada nombre tiene la forma «familia: variante», por ejemplo «Sicilian Defense: Najdorf Variation», y la tabla tiene 150 familias. En mis partidas aparecen 497 códigos, 2,823 nombres y 143 familias.
 \newline
-\textbf{Aperturas.} La Defensa Siciliana sola está en el 17.4\% de las partidas; le siguen la Francesa (6.7\%), la Inglesa (6.1\%) y la Caro-Kann (6.1\%) (figura~\ref{fig:eda-familias}). Bastan 8 familias para cubrir la mitad de las partidas, 25 para el 80\% y 56 para el 95\% (figura~\ref{fig:eda-aperturas-acumulado}). Por grupos ECO, las aperturas semiabiertas (B, 32.9\%) y las de flanco y otras (A, 29.3\%) son mayoría; siguen las abiertas y la Francesa (C, 16.5\%), las cerradas y semicerradas (D, 14.5\%) y las indias (E, 6.8\%). Esta concentración explica que tantas posiciones de apertura se repitan entre partidas.
+\textbf{Aperturas.} La Defensa Siciliana sola está en el 17.4\% de las partidas; le siguen la Francesa (6.7\%), la Caro-Kann (6.1\%) y la Inglesa (6.1\%) (figura~\ref{fig:eda-familias}). Bastan 8 familias para cubrir la mitad de las partidas, 25 para el 80\% y 55 para el 95\% (figura~\ref{fig:eda-aperturas-acumulado}). Por grupos ECO, las aperturas semiabiertas (B, 32.9\%) y las de flanco y otras (A, 29.3\%) son mayoría; siguen las abiertas y la Francesa (C, 16.5\%), las cerradas y semicerradas (D, 14.5\%) y las indias (E, 6.8\%). Esta concentración explica que tantas posiciones de apertura se repitan entre partidas.
 
 \begin{figure}[H]
 	\centering
@@ -537,7 +536,7 @@ Las secciones anteriores describen posiciones; esta describe las 376,458 partida
 	\label{fig:eda-aperturas-acumulado}
 \end{figure}
 
-\textbf{Primera jugada.} Las blancas abren con 1.e4 en el 47.6\% de las partidas y con 1.d4 en el 32.5\%. Contra 1.e4, las negras responden sobre todo 1\ldots c5, la Siciliana (36.3\%); contra 1.d4, 1\ldots\,Nf6 (46.9\%) (figura~\ref{fig:eda-primera-jugada}).
+\textbf{Primera jugada.} Las blancas abren con 1.e4 en el 47.6\% de las partidas y con 1.d4 en el 32.5\%. Contra 1.e4, las negras responden sobre todo 1\ldots c5, la Siciliana (36.2\%); contra 1.d4, 1\ldots\,Nf6 (46.8\%) (figura~\ref{fig:eda-primera-jugada}).
 
 \begin{figure*}[t]
 	\centering
@@ -546,9 +545,9 @@ Las secciones anteriores describen posiciones; esta describe las 376,458 partida
 	\label{fig:eda-primera-jugada}
 \end{figure*}
 
-\textbf{Ritmos.} El conjunto es casi todo Blitz: el 92.2\% de las partidas. Las Rápidas son el 7.4\% y las Clásicas y por correspondencia juntas, el 0.4\%. El reparto de aperturas cambia poco con el ritmo: en las Rápidas hay menos aperturas de flanco (23.8\% contra 29.8\% en Blitz) y más abiertas (20.1\% contra 16.2\%).
+\textbf{Ritmos.} El conjunto es casi todo Blitz: el 92.2\% de las partidas. Las Rápidas son el 7.4\% y las Clásicas y por correspondencia juntas, el 0.4\%. El reparto de aperturas cambia poco con el ritmo: en las Rápidas hay menos aperturas de flanco (24.0\% contra 29.8\% en Blitz) y más abiertas (19.9\% contra 16.2\%).
 \newline
-\textbf{Cómo terminan.} En el 23.2\% de las partidas a un jugador se le acabó el tiempo: el 24.3\% en Blitz y el 11.1\% en Rápidas (figura~\ref{fig:eda-terminacion}). Es decir, una parte importante de las jugadas del conjunto se hizo con prisa. En las Clásicas y por correspondencia, el 34.8\% quedó sin terminar.
+\textbf{Cómo terminan.} En el 23.3\% de las partidas a un jugador se le acabó el tiempo: el 24.3\% en Blitz y el 11.3\% en Rápidas (figura~\ref{fig:eda-terminacion}). Es decir, una parte importante de las jugadas del conjunto se hizo con prisa. En las Clásicas y por correspondencia, el 34.9\% quedó sin terminar.
 
 \begin{figure}[H]
 	\centering
@@ -564,7 +563,7 @@ Las secciones anteriores describen posiciones; esta describe las 376,458 partida
 \begin{itemize}[leftmargin=*]
 	\item Las fases quedan definidas por \textit{ply} (apertura antes del 20) y por número de piezas (final con 12 o menos), y reportaré los resultados de cada una por separado.
 	\item El modelo tiene que superar al azar (5.4\%) en todo el conjunto.
-	\item Más de dos tercios de las posiciones de apertura se repiten entre partidas, así que en la apertura también lo compararé con el «libro» (sección~\ref{sec:lineas-base}), que solo usa memoria.
+	\item Tres de cada cuatro posiciones de apertura se repiten entre partidas, así que en la apertura también lo compararé con el «libro» (sección~\ref{sec:lineas-base}), que solo usa memoria.
 	\item En las posiciones repetidas, el acierto \textit{top-1} no puede pasar de alrededor del 62\%, porque los jugadores no coinciden entre sí.
 	\item Las aperturas se concentran en pocas familias (8 cubren la mitad de las partidas), y el conjunto es casi todo Blitz: en una de cada cuatro partidas a un jugador se le acaba el tiempo.
 	\item La cola larga de clases y el bajo porcentaje de capturas de mayor valor indican que el modelo tendrá que aprender jugadas poco frecuentes y que una regla sencilla no bastará.
@@ -583,7 +582,7 @@ Para cada posición el modelo da una probabilidad a cada una de las 4,096 jugada
 \newline
 Por ejemplo, si en la posición inicial el modelo ordena 1.e4 (40\%), 1.d4 (30\%) y 1.\,Nf3 (10\%), y el jugador eligió 1.d4, la jugada real quedó en segundo lugar: la posición cuenta como fallo en \textit{top-1} y como acierto en \textit{top-3} y \textit{top-5}.
 \newline
-Elegí esta métrica porque es la que usan los trabajos que, como este, buscan predecir la jugada de una persona. McIlroy-Young et al.~\cite{mcilroyyoung2020} miden la precisión de coincidencia con la jugada humana (\textit{move-matching accuracy}), que es el \textit{top-1}, y al evaluar solo consideran las jugadas legales que produce la red. Ellos mismos señalan su límite: como jugadores distintos eligen jugadas distintas en la misma posición, ningún modelo puede coincidir con todos. Por eso también reporto \textit{top-3} y \textit{top-5}, como hacen Soldera y Pedrini~\cite{soldera2026} con su lista ordenada de jugadas candidatas (ellos llegan a \textit{top-3}): si la jugada humana queda en segundo o tercer lugar, el modelo la consideró aunque no la eligiera, y eso no es lo mismo que haberla ignorado. En este conjunto el problema es concreto, porque en las posiciones repetidas la jugada más común solo se elige el 62.1\% de las veces (sección~\ref{sec:eda}).
+Elegí esta métrica porque es la que usan los trabajos que, como este, buscan predecir la jugada de una persona. McIlroy-Young et al.~\cite{mcilroyyoung2020} miden la precisión de coincidencia con la jugada humana (\textit{move-matching accuracy}), que es el \textit{top-1}, y al evaluar solo consideran las jugadas legales que produce la red. Ellos mismos señalan su límite: como jugadores distintos eligen jugadas distintas en la misma posición, ningún modelo puede coincidir con todos. Por eso también reporto \textit{top-3} y \textit{top-5}, como hacen Soldera y Pedrini~\cite{soldera2026} con su lista ordenada de jugadas candidatas (ellos llegan a \textit{top-3}): si la jugada humana queda en segundo o tercer lugar, el modelo la consideró aunque no la eligiera, y eso no es lo mismo que haberla ignorado. En este conjunto el problema es concreto, porque en las posiciones repetidas la jugada más común solo se elige el 62.3\% de las veces (sección~\ref{sec:eda}).
 \newline
 Como la red se entrena sin la restricción de legalidad, también mido qué porcentaje de sus primeras opciones es ilegal, para saber si aprendió las reglas. Las líneas base de la sección~\ref{sec:lineas-base} se evalúan exactamente igual: cada una ordena las jugadas legales con su propia regla y se mide en qué lugar quedó la jugada real.
 \newline
@@ -600,7 +599,7 @@ Antes de comparar nada revisé que entrenamiento y validación se parecieran. La
 	\label{fig:train-val}
 \end{figure*}
 
-Aunque ninguna partida está en los dos conjuntos, el 21.0\% de las posiciones de validación aparece idéntica en entrenamiento. Casi todas son de apertura: ahí está repetido el 66.3\% de las posiciones, contra el 0.9\% en el medio juego y el 0.7\% en el final. No es una fuga de datos, porque son posiciones distintas de partidas distintas que coinciden porque los jugadores repiten las mismas aperturas; pero en ellas se puede acertar solo con memoria, y eso es lo que mide la línea base del «libro».
+Aunque ninguna partida está en los dos conjuntos, el 24.1\% de las posiciones de validación aparece idéntica en entrenamiento. Casi todas son de apertura: ahí está repetido el 74.5\% de las posiciones, contra el 1.7\% en el medio juego y el 1.4\% en el final. No es una fuga de datos, porque son posiciones distintas de partidas distintas que coinciden porque los jugadores repiten las mismas aperturas; pero en ellas se puede acertar solo con memoria, y eso es lo que mide la línea base del «libro».
 
 \subsection{Líneas base}
 \label{sec:lineas-base}
@@ -612,7 +611,7 @@ Todas las métricas se comparan con cuatro líneas base calculadas con los mismo
 	\item la captura de mayor valor y, si no hay capturas, una jugada legal al azar;
 	\item un «libro»: si la posición exacta aparece en entrenamiento, la jugada que más se jugó en ella y, si no aparece, la jugada legal más frecuente. Esta línea base mide cuánto se puede acertar solo con memoria, sobre todo en la apertura, donde las mismas posiciones se repiten en muchas partidas.
 \end{enumerate}
-Cuando dos jugadas empatan, por ejemplo dos capturas del mismo valor, el orden entre ellas se decide al azar. La tabla~\ref{tab:lineas-base} muestra el acierto de cada línea base en las 450,591 posiciones de validación.
+Cuando dos jugadas empatan, por ejemplo dos capturas del mismo valor, el orden entre ellas se decide al azar. La tabla~\ref{tab:lineas-base} muestra el acierto de cada línea base en las 1,802,132 posiciones de validación.
 
 \begin{table*}[t]
 	\centering
@@ -623,21 +622,21 @@ Cuando dos jugadas empatan, por ejemplo dos capturas del mismo valor, el orden e
 		 & \multicolumn{3}{c}{Todas las posiciones} & \multicolumn{3}{c}{\textit{Top-1} por fase} \\
 		Línea base & \textit{Top-1} & \textit{Top-3} & \textit{Top-5} & Apertura & Medio juego & Final \\
 		\hline
-		Azar & 5.4 & 14.4 & 21.7 & 3.6 & 5.3 & 12.1 \\
-		Más frecuente & 11.0 & 22.9 & 33.0 & 18.7 & 6.3 & 15.4 \\
-		Captura de mayor valor & 15.6 & 29.0 & 36.0 & 10.3 & \textbf{17.5} & \textbf{20.5} \\
-		Libro & \textbf{18.7} & \textbf{29.6} & \textbf{37.8} & \textbf{42.8} & 6.7 & 15.6 \\
+		Azar & 5.4 & 14.4 & 21.7 & 3.6 & 5.3 & 11.9 \\
+		Más frecuente & 11.0 & 22.9 & 33.0 & 18.8 & 6.3 & 15.1 \\
+		Captura de mayor valor & 15.6 & 29.0 & 36.1 & 10.3 & \textbf{17.6} & \textbf{20.7} \\
+		Libro & \textbf{20.1} & \textbf{31.0} & \textbf{38.9} & \textbf{46.8} & 7.1 & 15.6 \\
 		\hline
-		Posiciones & \multicolumn{3}{r}{450,591} & 138,733 & 270,364 & 41,494 \\
+		Posiciones & \multicolumn{3}{r}{1,802,132} & 554,168 & 1,083,669 & 164,295 \\
 		\hline
 	\end{tabular}
 	\caption{Acierto de las líneas base en validación (\%). En negritas, la mejor de cada columna.}
 	\label{tab:lineas-base}
 \end{table*}
 
-El «libro» es la mejor línea base en el conjunto completo (18.7\% \textit{top-1}), pero casi todo su acierto viene de la apertura, donde llega al 42.8\%. Fuera de ella las posiciones casi nunca están en entrenamiento, así que termina eligiendo la jugada más frecuente y apenas supera al azar en el medio juego.
+El «libro» es la mejor línea base en el conjunto completo (20.1\% \textit{top-1}), pero casi todo su acierto viene de la apertura, donde llega al 46.8\%. Fuera de ella las posiciones casi nunca están en entrenamiento, así que termina eligiendo la jugada más frecuente y apenas supera al azar en el medio juego.
 \newline
-Contra lo que esperaba en el análisis exploratorio, capturar la pieza más valiosa es la mejor regla en el medio juego (17.5\%) y en el final (20.5\%): aunque los jugadores no suelen elegirla, ninguna de las otras reglas se acerca a ella fuera de la apertura.
+Contra lo que esperaba en el análisis exploratorio, capturar la pieza más valiosa es la mejor regla en el medio juego (17.6\%) y en el final (20.7\%): aunque los jugadores no suelen elegirla, ninguna de las otras reglas se acerca a ella fuera de la apertura.
 \newline
 Con esto, el modelo tiene dos referencias claras: superar al «libro» en la apertura, donde se puede acertar de memoria, y superar a la captura de mayor valor en el resto de la partida, donde tiene que entender la posición.
 
@@ -674,7 +673,7 @@ Cada filtro de la primera capa mide $3\times3\times17$: recorre el tablero miran
 
 \subsection{Entrenamiento}
 
-Entrené con las 3.6 millones de posiciones de entrenamiento, en lotes de 512, con Adam y durante 10 épocas; cada época tardó unos 12 minutos. La pérdida en validación baja hasta la tercera época (2.17) y después sube, mientras que en entrenamiento sigue bajando (figura~\ref{fig:curvas}): desde la cuarta época el modelo empieza a memorizar las posiciones de entrenamiento en lugar de aprender algo que sirva para posiciones nuevas. En la décima época acierta el 57.8\% en entrenamiento y solo el 36.3\% en validación. Por eso el modelo que evalúo es el de la tercera época, el que guardó \textit{ModelCheckpoint}.
+Este primer modelo lo entrené antes de usar todas las partidas, con una muestra al azar de una de cada cuatro: 3.6 millones de posiciones de entrenamiento y 450,591 de validación. Por eso sus resultados, y las líneas base con las que lo comparo en esta sección, son los de esa muestra. Entrené en lotes de 512, con Adam y durante 10 épocas; cada época tardó unos 12 minutos. La pérdida en validación baja hasta la tercera época (2.17) y después sube, mientras que en entrenamiento sigue bajando (figura~\ref{fig:curvas}): desde la cuarta época el modelo empieza a memorizar las posiciones de entrenamiento en lugar de aprender algo que sirva para posiciones nuevas. En la décima época acierta el 57.8\% en entrenamiento y solo el 36.3\% en validación. Por eso el modelo que evalúo es el de la tercera época, el que guardó \textit{ModelCheckpoint}.
 
 \begin{figure}[H]
 	\centering
@@ -712,7 +711,7 @@ Por apertura, el acierto casi no cambia (figura~\ref{fig:acierto-aperturas}): va
 		Final & 35.4 & 63.1 & 75.8 & 20.5 & 5.7 \\
 		\hline
 	\end{tabular}
-	\caption{Acierto del primer modelo en validación (\%), frente al \textit{top-1} de la mejor línea base de cada corte (tabla~\ref{tab:lineas-base}). «Ilegal»: primeras opciones ilegales antes de descartarlas.}
+	\caption{Acierto del primer modelo en validación (\%), frente al \textit{top-1} de la mejor línea base de cada corte en la misma muestra. «Ilegal»: primeras opciones ilegales antes de descartarlas.}
 	\label{tab:resultados-modelo}
 \end{table}
 
@@ -731,7 +730,7 @@ Para tener una primera idea del nivel del modelo, lo hice jugar contra una escal
 	\item las redes Maia de 1100, 1500 y 1900, que imitan a jugadores de esos niveles y juegan sin buscar;
 	\item Stockfish con su fuerza limitada a 1320, el nivel más bajo que permite.
 \end{itemize}
-Cada pareja jugó desde 20 aperturas, una vez con cada color. Cada apertura es la secuencia de 8 \textit{plies} más frecuente de una de las 20 familias más jugadas del conjunto. Cada rival jugó 40 partidas contra sus vecinos de la escalera. El modelo jugó 10 contra cada rival y completó 40 contra los que le hicieron entre el 10\% y el 90\% de los puntos. En total fueron 600 partidas.
+Cada pareja jugó desde 20 aperturas, una vez con cada color. Cada apertura es la secuencia de 8 \textit{plies} más frecuente de una de las 20 familias más jugadas en la muestra. Cada rival jugó 40 partidas contra sus vecinos de la escalera. El modelo jugó 10 contra cada rival y completó 40 contra los que le hicieron entre el 10\% y el 90\% de los puntos. En total fueron 600 partidas.
 \newline
 Con todas ellas estimé el Elo de cada jugador por máxima verosimilitud con el modelo logístico del Elo, contando las tablas como medio punto y fijando a Stockfish 1320 en 1320 (tabla~\ref{tab:elo}). Por eso todos los números están en la escala de Stockfish, que no es la del rating de Lichess.
 

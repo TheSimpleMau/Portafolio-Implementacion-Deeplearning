@@ -10,7 +10,6 @@ from model.preprocessing import N_CLASSES, expand_planes
 
 RESULTS_PATH = "resultados/lineas_base.json"
 KS = (1, 3, 5)
-SKIPPED_PLIES = 10  # protocolo de Maia: solo como referencia
 SPLIT_NAMES = ("train", "val")
 OPENINGS_RESULTS_PATH = "resultados/acierto_por_apertura.json"
 TOP_OPENING_FAMILIES = 10
@@ -75,7 +74,6 @@ def phase_masks(ply, squares):
     phase = eda.game_phase(ply, eda.piece_count(squares))
     masks = {"todas": np.ones(len(ply), dtype=bool)}
     masks.update({name: phase == code for code, name in enumerate(eda.PHASE_NAMES)})
-    masks[f"sin los primeros {SKIPPED_PLIES} plies"] = ply >= SKIPPED_PLIES
     return masks
 
 

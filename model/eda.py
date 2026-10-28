@@ -1,13 +1,38 @@
+import collections
 import json
 import os
+import re
+import sys
 
 import numpy as np
+import pandas as pd
 
 from model import plotUtil
-from model.etlProcess import PROCESSED_PATH, load_data
+from model.etlProcess import (
+    FILTERED_PATH, GAME_SAMPLE_RATE, MIN_ELO, MONTH, POSITIONS_PER_GAME, PROCESSED_PATH, RANDOM_STATE,
+    _header_discard_reason, load_data, read_filtered_games,
+)
 from model.preprocessing import N_CLASSES
 
 SUMMARY_PATH = "graficas/eda_resumen.json"
+OPENINGS_SUMMARY_PATH = "graficas/aperturas_resumen.json"
+# Aperturas iniciales para medir el Elo (las usa game/elo.py).
+ELO_OPENINGS_PATH = "graficas/aperturas_elo.json"
+# Apertura de cada partida usada, por game_id (para cruzarla con las posiciones).
+GAME_OPENINGS_PATH = f"data/processed/aperturas_{MONTH}.npz"
+
+# Tamaño de la tabla de aperturas de Lichess (lichess-org/chess-openings).
+LICHESS_ECO_CODES = 500
+LICHESS_OPENING_NAMES = 3177
+LICHESS_FAMILIES = 150
+ECO_GROUPS = ("A", "B", "C", "D", "E")
+SPEEDS = (("Blitz", "Blitz"), ("Rapid", "Rápidas"), ("Classical", "Clásicas y correspondencia"),
+          ("Correspondence", "Clásicas y correspondencia"))
+TOP_FAMILIES = 20
+ELO_OPENING_PLIES = 8
+
+COMMENT = re.compile(r"\{[^}]*\}")
+NON_MOVE = re.compile(r"^(\d+\.+|1-0|0-1|1/2-1/2|\*|\$\d+)$")
 
 # Umbrales de fase decididos con el EDA.
 OPENING_PLY = 20
@@ -155,6 +180,145 @@ def initial_graphs(data, summary_path=SUMMARY_PATH):
     return summary
 
 
+def game_moves(movetext):
+    """Jugadas en SAN del texto de la partida, sin comentarios, números de jugada ni signos ?!."""
+    tokens = COMMENT.sub(" ", movetext).split()
+    return [token.rstrip("?!") for token in tokens if not NON_MOVE.match(token)]
+
+
+def used_games(games, positions_per_game=POSITIONS_PER_GAME, min_elo=MIN_ELO,
+               game_sample_rate=GAME_SAMPLE_RATE, random_state=RANDOM_STATE):
+    """Repite el sorteo de transform_data sin analizar las jugadas: (game_id, cabeceras, jugadas, plies)."""
+    rng = np.random.default_rng(random_state)
+    game_id = 0
+    for headers, pgn in games:
+        if _header_discard_reason(headers, min_elo):
+            continue
+        if game_sample_rate < 1 and rng.random() >= game_sample_rate:
+            continue
+        moves = game_moves(pgn.partition("\n\n")[2])
+        if not moves:
+            continue
+        plies = rng.choice(len(moves), size=min(positions_per_game, len(moves)), replace=False)
+        yield game_id, headers, moves, plies
+        game_id += 1
+
+
+def opening_family(name):
+    return name.split(":")[0]
+
+
+def game_speed(event):
+    return next((label for key, label in SPEEDS if key in event), "Otro")
+
+
+def _coverage(counts, shares=(0.5, 0.8, 0.95)):
+    """Cuántas categorías (de la más a la menos común) cubren cada fracción de las partidas."""
+    cumulative = np.cumsum(np.sort(np.asarray(counts))[::-1]) / np.sum(counts)
+    return {f"{share:.0%}": int(np.searchsorted(cumulative, share) + 1) for share in shares}
+
+
+def _shares(series):
+    return {str(key): round(float(value), 4) for key, value in series.value_counts(normalize=True).items()}
+
+
+def dataset_graphs(games, processed_path=PROCESSED_PATH, summary_path=OPENINGS_SUMMARY_PATH,
+                   elo_openings_path=ELO_OPENINGS_PATH, game_openings_path=GAME_OPENINGS_PATH):
+    """Aperturas, primera jugada, ritmos, terminación y duración de las partidas que usa el ETL."""
+    with np.load(processed_path) as file:
+        game_id, ply = file["game_id"], file["ply"]
+    starts = np.searchsorted(game_id, np.arange(game_id.max() + 2))
+
+    rows, mismatched, missing_plies = [], 0, 0
+    for gid, headers, moves, plies in used_games(games):
+        stored = set(ply[starts[gid]:starts[gid + 1]].tolist())
+        if not stored <= set(plies.tolist()):
+            mismatched += 1
+        missing_plies += len(plies) - len(stored)
+        opening = headers.get("Opening", "?")
+        rows.append({
+            "eco": headers.get("ECO", "?"),
+            "family": opening_family(opening),
+            "name": opening,
+            "speed": game_speed(headers.get("Event", "")),
+            "termination": headers.get("Termination", "?"),
+            "plies": len(moves),
+            "first": moves[0],
+            "reply": " ".join(moves[:2]),
+            "line": " ".join(moves[:ELO_OPENING_PLIES]) if len(moves) >= ELO_OPENING_PLIES else None,
+        })
+    if mismatched or len(rows) != game_id.max() + 1:
+        raise RuntimeError(f"El sorteo no coincide con {processed_path}: {mismatched} partidas distintas, "
+                           f"{len(rows):,} partidas contra {game_id.max() + 1:,}.")
+    games_df = pd.DataFrame(rows)
+    games_df["group"] = games_df["eco"].str[0].where(games_df["eco"].str[0].isin(ECO_GROUPS), "?")
+
+    families = games_df["family"].value_counts()
+    top = families.index[:TOP_FAMILIES]
+    lines = games_df[games_df["family"].isin(top)].dropna(subset=["line"])
+    elo_openings = [
+        {"familia": family, "jugadas": lines.loc[lines["family"] == family, "line"].mode()[0].split(),
+         "partidas": int(families[family])}
+        for family in top
+    ]
+    by_speed = pd.crosstab(games_df["speed"], games_df["group"], normalize="index")
+    termination = pd.crosstab(games_df["speed"], games_df["termination"], normalize="index")
+    first_moves = games_df["first"].value_counts(normalize=True)
+    replies = {first: games_df.loc[games_df["first"] == first, "reply"].str.split().str[1]
+               .value_counts(normalize=True) for first in ("e4", "d4")}
+
+    plotUtil.eco_group_bar(games_df["group"].value_counts(normalize=True).reindex(ECO_GROUPS, fill_value=0))
+    plotUtil.opening_families_bar(families[:TOP_FAMILIES] / len(games_df))
+    plotUtil.opening_cumulative(families.to_numpy())
+    plotUtil.first_moves_bar(first_moves, replies)
+    plotUtil.openings_by_speed(by_speed.reindex(columns=list(ECO_GROUPS), fill_value=0),
+                               games_df["speed"].value_counts())
+    plotUtil.termination_bar(termination, games_df["speed"].value_counts())
+    plotUtil.game_length_hist(games_df["plies"].to_numpy())
+
+    plies_per_game = games_df["plies"]
+    summary = {
+        "partidas": len(games_df),
+        "partidas_con_un_ply_menos_en_el_npz": int(missing_plies),
+        "eco_distintos": int(games_df["eco"].nunique()),
+        "eco_en_la_tabla_de_lichess": LICHESS_ECO_CODES,
+        "nombres_distintos": int(games_df["name"].nunique()),
+        "nombres_en_la_tabla_de_lichess": LICHESS_OPENING_NAMES,
+        "familias_distintas": int(len(families)),
+        "familias_en_la_tabla_de_lichess": LICHESS_FAMILIES,
+        "grupos_eco": _shares(games_df["group"]),
+        "familias_que_cubren": _coverage(families.to_numpy()),
+        "nombres_que_cubren": _coverage(games_df["name"].value_counts().to_numpy()),
+        "familias_principales": {name: round(float(n / len(games_df)), 4) for name, n in families[:TOP_FAMILIES].items()},
+        "primera_jugada": {name: round(float(v), 4) for name, v in first_moves[:8].items()},
+        "respuesta_a_e4": {name: round(float(v), 4) for name, v in replies["e4"][:6].items()},
+        "respuesta_a_d4": {name: round(float(v), 4) for name, v in replies["d4"][:6].items()},
+        "ritmos": _shares(games_df["speed"]),
+        "grupos_eco_por_ritmo": by_speed.round(4).to_dict(orient="index"),
+        "terminacion": _shares(games_df["termination"]),
+        "terminacion_por_ritmo": termination.round(4).to_dict(orient="index"),
+        "plies_por_partida_media": round(float(plies_per_game.mean()), 1),
+        "plies_por_partida_p5_mediana_p95": [int(v) for v in np.percentile(plies_per_game, [5, 50, 95])],
+    }
+    for path, content in ((summary_path, summary), (elo_openings_path, elo_openings)):
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(content, file, indent=2, ensure_ascii=False)
+
+    family_names = families.index.to_numpy(dtype=str)
+    np.savez(
+        game_openings_path,
+        eco=games_df["eco"].to_numpy(dtype="U3"),
+        family=pd.Categorical(games_df["family"], categories=family_names).codes.astype(np.int16),
+        family_names=family_names,
+    )
+    return summary
+
+
 if __name__ == "__main__":
+    if sys.argv[1:] == ["aperturas"]:
+        summary = dataset_graphs(read_filtered_games(FILTERED_PATH))
+        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        sys.exit()
     summary = initial_graphs(load_data(PROCESSED_PATH))
     print(json.dumps(summary, indent=2, ensure_ascii=False))

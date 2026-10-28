@@ -11,6 +11,11 @@ DPI = 300
 plt.rcParams.update({"font.size": 12})
 GRAPHICS_DIR = "./graficas"
 PIECE_NAMES = ("Peón", "Caballo", "Alfil", "Torre", "Dama", "Rey")
+# Volúmenes de la Encyclopaedia of Chess Openings.
+ECO_GROUP_NAMES = {
+    "A": "A: flanco\ny otras", "B": "B: semiabiertas", "C": "C: abiertas\ny Francesa",
+    "D": "D: cerradas y\nsemicerradas", "E": "E: indias",
+}
 
 
 def ensure_graphics_directory():
@@ -149,6 +154,139 @@ def repeated_positions_by_ply(repeated_rate, ceiling_rate):
     plt.title("Posiciones que se repiten entre partidas, por ply")
     plt.legend()
     _save("eda_posiciones_repetidas.png")
+
+
+def eco_group_bar(shares):
+    ensure_graphics_directory()
+    plt.figure(figsize=(7, 4.5))
+    bars = plt.bar([ECO_GROUP_NAMES[g] for g in shares.index], shares.to_numpy() * 100, color="steelblue")
+    plt.bar_label(bars, fmt="%.1f%%")
+    plt.ylim(0, shares.max() * 100 * 1.15)
+    plt.ylabel("Porcentaje de las partidas")
+    plt.title("Partidas por grupo de aperturas (ECO)")
+    _save("eda_grupos_eco.png")
+
+
+def opening_families_bar(shares):
+    ensure_graphics_directory()
+    plt.figure(figsize=(7.5, 7))
+    bars = plt.barh(shares.index[::-1], shares.to_numpy()[::-1] * 100, color="steelblue")
+    plt.bar_label(bars, fmt="%.1f%%", padding=2)
+    plt.xlim(0, shares.max() * 100 * 1.18)
+    plt.xlabel("Porcentaje de las partidas")
+    plt.title(f"Las {len(shares)} familias de aperturas más jugadas")
+    _save("eda_familias_aperturas.png")
+
+
+def opening_cumulative(counts):
+    ensure_graphics_directory()
+    present = np.sort(counts)[::-1]
+    cumulative = np.cumsum(present) / present.sum()
+    plt.figure(figsize=(6.5, 4.5))
+    plt.plot(np.arange(1, len(present) + 1), cumulative * 100, color="steelblue")
+    marks = [(share, np.searchsorted(cumulative, share) + 1) for share in (0.5, 0.8, 0.95)]
+    for share, n_families in marks:
+        plt.plot([0, n_families, n_families], [share * 100, share * 100, 0], color="gray", linestyle="--")
+        # Las etiquetas van a la derecha de la última marca para que ninguna línea las cruce.
+        plt.text(marks[-1][1] + 4, share * 100 - 6, f"{n_families} familias: {share:.0%}")
+    plt.xlim(0, len(present))
+    plt.ylim(0, 102)
+    plt.xlabel("Familias de aperturas, de la más a la menos jugada")
+    plt.ylabel("% de las partidas")
+    plt.title("Pocas familias concentran casi todas las partidas")
+    _save("eda_aperturas_acumulado.png")
+
+
+def first_moves_bar(first_moves, replies, top=5):
+    """Primera jugada de las blancas y respuesta de las negras a 1.e4 y 1.d4 (las demás, en «Otras»)."""
+    ensure_graphics_directory()
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4.5))
+    panels = [(first_moves, "Primera jugada de las blancas", "1.")]
+    panels += [(shares, f"Respuesta de las negras a 1.{move}", "1...") for move, shares in replies.items()]
+    for ax, (shares, title, prefix) in zip(axes, panels):
+        shown = shares[:top]
+        values = list(shown.to_numpy() * 100) + [(1 - shown.sum()) * 100]
+        bars = ax.bar([prefix + m for m in shown.index] + ["Otras"], values,
+                      color=["steelblue"] * len(shown) + ["gray"])
+        ax.bar_label(bars, fmt="%.1f%%", fontsize=10)
+        ax.set_ylim(0, max(values) * 1.15)
+        ax.set_title(title)
+        ax.tick_params(axis="x", rotation=30)
+    axes[0].set_ylabel("Porcentaje de las partidas")
+    _save("eda_primera_jugada.png")
+
+
+def openings_by_speed(shares, games_per_speed):
+    """Grupos ECO dentro de cada ritmo (shares: ritmos × grupos, filas que suman 1)."""
+    ensure_graphics_directory()
+    speeds = [s for s in games_per_speed.index if s in shares.index]
+    width = 0.8 / len(speeds)
+    plt.figure(figsize=(8, 4.5))
+    for code, speed in enumerate(speeds):
+        offset = (code - (len(speeds) - 1) / 2) * width
+        plt.bar(np.arange(len(shares.columns)) + offset, shares.loc[speed].to_numpy() * 100, width,
+                label=f"{speed} ({games_per_speed[speed]:,} partidas)")
+    plt.xticks(np.arange(len(shares.columns)), [ECO_GROUP_NAMES[g] for g in shares.columns])
+    plt.ylim(0, shares.to_numpy().max() * 100 * 1.4)
+    plt.ylabel("Porcentaje de las partidas del ritmo")
+    plt.title("Grupos de aperturas por ritmo de juego")
+    plt.legend()
+    _save("eda_aperturas_por_ritmo.png")
+
+
+def termination_bar(shares, games_per_speed):
+    """Cómo terminan las partidas de cada ritmo (shares: ritmos × tipo de terminación de Lichess)."""
+    ensure_graphics_directory()
+    names = {"Normal": "Normal (mate, abandono o tablas)", "Time forfeit": "Tiempo agotado",
+             "Unterminated": "Sin terminar"}
+    grouped = shares.T.groupby(lambda column: names.get(column, "Otras")).sum().T
+    columns = [n for n in list(names.values()) + ["Otras"] if n in grouped.columns]
+    speeds = [s for s in games_per_speed.index if s in grouped.index][::-1]
+    colors = {"Normal (mate, abandono o tablas)": "steelblue", "Tiempo agotado": "darkorange",
+              "Sin terminar": "gray", "Otras": "firebrick"}
+    plt.figure(figsize=(8, 4.5))
+    left = np.zeros(len(speeds))
+    for column in columns:
+        values = grouped.loc[speeds, column].to_numpy() * 100
+        bars = plt.barh(speeds, values, left=left, label=column, color=colors[column])
+        plt.bar_label(bars, labels=[f"{v:.1f}%" if v >= 5 else "" for v in values], label_type="center")
+        left += values
+    plt.xlim(0, 100)
+    plt.xlabel("Porcentaje de las partidas del ritmo")
+    plt.title("Cómo terminan las partidas")
+    plt.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2)
+    _save("eda_terminacion.png")
+
+
+def game_length_hist(plies):
+    ensure_graphics_directory()
+    plt.figure(figsize=(6.5, 4))
+    plt.hist(plies, bins=np.arange(0, min(plies.max(), 250) + 2, 2) - 0.5, color="steelblue")
+    plt.axvline(np.median(plies), color="black", linestyle="--", label=f"Mediana = {np.median(plies):.0f}")
+    plt.xlabel("Plies de la partida")
+    plt.ylabel("Partidas")
+    plt.title("Duración de las partidas")
+    plt.legend()
+    _save("eda_duracion_partidas.png")
+
+
+def accuracy_by_opening(results):
+    """Top-1 del modelo y del «libro» en val por grupo ECO y por familia de aperturas."""
+    ensure_graphics_directory()
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5), gridspec_kw={"width_ratios": [1, 2]})
+    for ax, cut, title in ((axes[0], "grupo_eco", "Por grupo ECO"), (axes[1], "familia", "Por familia")):
+        names = list(results[cut]["modelo"])
+        labels = [ECO_GROUP_NAMES.get(n, n).replace("\n", " ") if cut == "grupo_eco" else n for n in names]
+        x = np.arange(len(names))
+        for offset, source, color in ((-0.2, "modelo", "steelblue"), (0.2, "libro", "gray")):
+            values = [results[cut][source][n]["top1"] * 100 for n in names]
+            ax.bar(x + offset, values, 0.4, color=color, label="Modelo" if source == "modelo" else "«Libro»")
+        ax.set_xticks(x, labels, rotation=45, ha="right")
+        ax.set_ylim(0, 55)
+        ax.set_title(title)
+        ax.legend(loc="upper center", ncol=2)
+    axes[0].set_ylabel("Top-1 en validación (%)")
+    _save("acierto_por_apertura.png")
 
 
 def split_comparison(elo, ply, phase, splits, split_names, phase_names):

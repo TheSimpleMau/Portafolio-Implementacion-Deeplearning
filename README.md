@@ -38,7 +38,7 @@ Los datos se descargan manualmente a `data/raw/` (la carpeta está ignorada por 
 ```
 model/   # todo lo del modelo
   preprocessing.py   # tablero y jugadas a tensores (4,096 clases)
-  etlProcess.py      # PGN.zst de Lichess a posiciones, filtros y división por partida
+  etlProcess.py      # PGN.zst de Lichess a Parquet filtrado y a posiciones; división por partida
   eda.py, plotUtil.py
   evaluation.py      # precisión top-k entre jugadas legales y líneas base
   chessModels.py     # arquitecturas
@@ -46,9 +46,10 @@ model/   # todo lo del modelo
   experimentStorage.py  # resultados en resultados/
 main.py  # entrena y evalúa el modelo
 game/    # jugar contra el modelo
-  players.py         # jugadores: modelo, Stockfish y azar
+  players.py         # jugadores: modelo, Stockfish, Maia, captura y azar
   match.py           # partidas CPU vs CPU sin ventana y PGN
   gui.py             # ventana con pygame-ce
+  elo.py             # Elo del modelo con una escalera de rivales
 tests/   # pytest
 ```
 
@@ -58,9 +59,13 @@ Con el entorno activado:
 
 ```bash
 python main.py                # entrena y evalúa las corridas de EXPERIMENTS; la configuración está al inicio del archivo
-python -m model.etlProcess    # ETL (los datos crudos van en data/raw/)
+python -m model.etlProcess filtrar   # crudo de data/raw/ a data/processed/games_<mes>.parquet (una vez)
+python -m model.etlProcess    # ETL: posiciones desde el Parquet (o desde el crudo si no existe)
 python -m model.eda           # gráficas del análisis exploratorio en graficas/
+python -m model.eda aperturas # aperturas, ritmos, terminación y duración de las partidas usadas
 python -m model.evaluation    # líneas base en validación
+python -m model.evaluation aperturas models/m1.keras   # acierto del modelo por apertura
+python -m game.elo models/m1.keras   # Elo del modelo (ver abajo)
 pytest -q
 ```
 
@@ -85,3 +90,15 @@ python -m game.gui
 - Cuando juegan dos CPU se elige el modo: **Automático** (juegan solas, con espacio para pausar) o **Manual** (cada jugada espera la flecha derecha o Enter).
 - Teclas: `n` nueva partida con los mismos jugadores, `u` deshacer, `Esc` vuelve al menú.
 - Al terminar, la partida se guarda en `resultados/partidas/` como PGN, con el top-3 del modelo como comentario en cada jugada suya.
+
+## Elo del modelo
+
+`python -m game.elo models/<modelo>.keras` juega el modelo contra una escalera de rivales (azar, captura de mayor valor, Stockfish a profundidad 1, Maia 1100/1500/1900 y Stockfish con `UCI_Elo` 1320), desde aperturas variadas y con los dos colores, y estima el Elo de todos por máxima verosimilitud con Stockfish 1320 como ancla. Las aperturas salen de `python -m model.eda aperturas`. Maia ([CSSLab/maia-chess](https://github.com/CSSLab/maia-chess), GPL-3.0) necesita lc0 y sus pesos, que no forman parte del repositorio:
+
+```bash
+brew install lc0
+```
+
+```bash
+mkdir -p models/maia && for e in 1100 1500 1900; do curl -L -o models/maia/maia-$e.pb.gz https://github.com/CSSLab/maia-chess/releases/download/v1.0/maia-$e.pb.gz; done
+```

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import zstandard
 
-from model.etlProcess import read_games, split_data
+from model.etlProcess import filter_raw, read_filtered_games, read_games, split_data
 from model.etlProcess import transform_data as etl_transform_data
 from model.preprocessing import decode_move
 
@@ -196,3 +196,17 @@ def test_excluye_partidas_de_cuentas_bot(tmp_path):
     _, counters = transform_data(read_games(path))
     assert counters["bot"] == 1
     assert counters["partidas_usadas"] == 1
+
+
+def test_etl_desde_parquet_igual_que_desde_el_crudo(tmp_path):
+    path = tmp_path / "mezcla.pgn.zst"
+    path.write_bytes(zstandard.ZstdCompressor().compress((PGN + LICHESS_GAME * 3).encode("utf-8")))
+    parquet = tmp_path / "partidas.parquet"
+    counters = filter_raw(path, parquet, tmp_path / "filtros.json", min_elo=0)
+
+    expected, _ = transform_data(read_games(path), positions_per_game=2)
+    data, _ = transform_data(read_filtered_games(parquet), positions_per_game=2)
+    assert counters["partidas_guardadas"] == 6
+    assert counters["bullet"] == 1 and counters["sin_elo"] == 1
+    for key in expected:
+        assert np.array_equal(data[key], expected[key])

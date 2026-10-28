@@ -6,3 +6,4 @@ matplotlib==3.11.2
 zstandard==0.25.0
 pytest==9.1.1
 pygame-ce==2.5.8
+pyarrow==26.0.0

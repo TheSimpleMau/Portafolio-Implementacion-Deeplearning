@@ -33,6 +33,20 @@ source .venv/bin/activate
 
 Los datos se descargan manualmente a `data/raw/` (la carpeta está ignorada por git).
 
+### Entrenar con la GPU (opcional, Mac con Apple silicon)
+
+`tensorflow-metal` todavía no funciona con TensorFlow 2.21, así que la GPU usa un segundo entorno, `.venv-metal/` (también ignorado), con TensorFlow 2.19.1:
+
+```bash
+uv venv --python 3.12 .venv-metal
+```
+
+```bash
+uv pip install --python .venv-metal/bin/python -r requirements-metal.txt
+```
+
+Con ese entorno, `python main.py` entrena unas 2.4 veces más rápido y da el mismo modelo que en la CPU. Lo demás (ETL, EDA, evaluación y juego) se corre con `.venv`.
+
 ## Estructura
 
 ```

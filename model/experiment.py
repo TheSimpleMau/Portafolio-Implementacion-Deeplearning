@@ -13,6 +13,10 @@ from model.preprocessing import expand_planes
 
 PROGRESS_EVERY = 0.05  # fracción de la época entre líneas de avance
 
+if tf.config.list_physical_devices("GPU"):
+    # Con tensorflow-metal 1.2.0 las optimizaciones del grafo dan salidas equivocadas en fit y predict.
+    tf.config.optimizer.set_experimental_options({"disable_meta_optimizer": True})
+
 
 def batch_generator(data, idx, batch_size, shuffle=False, seed=None, epochs=None):
     """Lotes (tablero one-hot en float32, jugada) sin expandir todo el conjunto en memoria.

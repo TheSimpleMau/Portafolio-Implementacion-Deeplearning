@@ -189,6 +189,17 @@ def test_muestreo_de_partidas_reproducible(tmp_path):
         assert np.array_equal(data[key], again[key])
 
 
+def test_por_bloques_igual_que_de_una_vez(tmp_path):
+    path = tmp_path / "bloques.pgn.zst"
+    path.write_bytes(zstandard.ZstdCompressor().compress((PGN + LICHESS_GAME * 3).encode("utf-8")))
+
+    expected, _ = transform_data(read_games(path), positions_per_game=100, block_games=1_000)
+    data, _ = transform_data(read_games(path), positions_per_game=100, block_games=2)
+    assert data.keys() == expected.keys()
+    for key in expected:
+        assert np.array_equal(data[key], expected[key])
+
+
 def test_excluye_partidas_de_cuentas_bot(tmp_path):
     bot_game = LICHESS_GAME.replace('[WhiteElo "2300"]', '[WhiteTitle "BOT"]\n[WhiteElo "2300"]')
     path = tmp_path / "bots.pgn.zst"

@@ -105,7 +105,11 @@ def training_summary(history):
 def print_metrics(metrics):
     print(f"\nMejor época: {metrics['mejor_epoca']}  val_loss {metrics['val_loss']:.3f}  "
           f"perplejidad {metrics['perplejidad']:.1f}  brecha de accuracy {metrics['brecha_accuracy'] * 100:.1f} pts")
-    for cut, values in metrics["por_corte"].items():
+    print_cuts(metrics["por_corte"])
+
+
+def print_cuts(by_cut):
+    for cut, values in by_cut.items():
         row = "  ".join(f"{name} {value * 100:5.1f} %" for name, value in values.items() if name != "posiciones")
         print(f"  {cut:<28} {row}")
 
@@ -140,4 +144,35 @@ def run_experiment(config):
     plotUtil.training_history(history, config["name"])
     experimentStorage.save_run(config, history, metrics)
     print_metrics(metrics)
+    return metrics
+
+
+def run_final(config):
+    """Entrena con train+val durante config["epochs"] épocas fijas (sin val para detenerse) y evalúa en test una vez."""
+    tf.keras.backend.clear_session()
+    tf.keras.utils.set_random_seed(config["seed"])
+    data = load_data()
+    train, val, test = split_data(data["game_id"])
+    train = np.sort(np.concatenate([train, val]))
+
+    model = get_model(**config["model"])
+    compile_model(model, config["learning_rate"])
+    model.summary()
+
+    start = time.time()
+    history = model.fit(batch_generator(data, train, config["batch_size"], shuffle=True, seed=config["seed"],
+                                        epochs=config["epochs"]),
+                        steps_per_epoch=steps(train, config["batch_size"]),
+                        epochs=config["epochs"],
+                        shuffle=False,  # el generador ya revuelve
+                        verbose=2).history
+    minutes = (time.time() - start) / 60
+    model.save(config["model_path"])
+
+    metrics = {"posiciones_train": len(train), "minutos": minutes, "test": evaluation.evaluate_model(model, data, test)}
+    plotUtil.training_history(history, config["name"])
+    plotUtil.topk_by_phase(metrics["test"]["por_corte"], config["name"])
+    experimentStorage.save_run(config, history, metrics)
+    print("\nPrueba (test):")
+    print_cuts(metrics["test"]["por_corte"])
     return metrics

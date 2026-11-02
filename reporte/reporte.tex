@@ -413,7 +413,7 @@ La división en entrenamiento, validación y prueba se hace \textbf{por partida 
 	\label{tab:split}
 \end{table}
 
-El conjunto de \textit{test} no interviene en ninguna decisión: la elección de arquitecturas e hiperparámetros se hará con \textit{validation}, y \textit{test} se usará una sola vez al final.
+El conjunto de \textit{test} no interviene en ninguna decisión: elegí la arquitectura y los hiperparámetros con \textit{validation}, y usé \textit{test} una sola vez, para evaluar el modelo final.
 
 \subsubsection{Validación del proceso}
 
@@ -574,7 +574,7 @@ Las secciones anteriores describen posiciones; esta describe las 1,505,793 parti
 
 \subsection{Durante el entrenamiento}
 
-La red se entrena con la entropía cruzada categórica (\textit{sparse categorical crossentropy}), la pérdida para clasificación cuando las etiquetas son enteros. En cada época registro la pérdida y la precisión en entrenamiento y validación. Con \textit{ModelCheckpoint} guardo el modelo de menor pérdida en validación, de modo que el número de épocas no tiene que adivinarse de antemano.
+La red se entrena con la entropía cruzada categórica (\textit{sparse categorical crossentropy}), la pérdida para clasificación cuando las etiquetas son enteros. En cada época registro la pérdida y la precisión en entrenamiento y validación. Con \textit{ModelCheckpoint} guardo el modelo de menor pérdida en validación, de modo que el número de épocas no tiene que adivinarse de antemano, y con \textit{EarlyStopping} detengo el entrenamiento cuando esa pérdida no mejora en dos épocas seguidas.
 
 \subsection{Precisión \textit{top-k}}
 
@@ -646,9 +646,11 @@ Con esto, el modelo tiene dos referencias claras: superar al «libro» en la ape
 
 \subsection{Arquitectura}
 
-Como primer modelo usé una red convolucional sencilla (tabla~\ref{tab:arquitectura}). Recibe el tablero con los 17 canales de la tabla~\ref{tab:canales} y devuelve una probabilidad para cada una de las 4,096 jugadas posibles. Las dos capas convolucionales usan filtros de $3\times3$ con relleno (\textit{padding}) para conservar el tamaño de $8\times8$. No usé \textit{pooling}, porque en un tablero tan pequeño cada reducción borra casillas que importan. Casi todos los parámetros están en las dos capas densas.
+El modelo es una red convolucional sencilla (tabla~\ref{tab:arquitectura}). Recibe el tablero con los 17 canales de la tabla~\ref{tab:canales} y devuelve una probabilidad para cada una de las 4,096 jugadas posibles. Las dos capas convolucionales usan filtros de $3\times3$ con relleno (\textit{padding}) para conservar el tamaño de $8\times8$. No usé \textit{pooling}, porque en un tablero tan pequeño cada reducción borra casillas que importan. Casi todos los parámetros están en las dos capas densas.
 \newline
-Cada filtro de la primera capa mide $3\times3\times17$: recorre el tablero mirando a la vez las $3\times3$ casillas de alrededor en los 17 canales. Por eso las piezas propias y rivales están en la profundidad de cada filtro y no determinan cuántos filtros hay; el número de filtros es cuántos patrones distintos puede aprender la capa. Usé 64 en la primera capa y 128 en la segunda porque es la configuración inicial habitual para este tipo de redes: más filtros que canales de entrada, y el doble en la capa siguiente, que combina esos patrones en zonas más grandes del tablero. En este primer modelo no los ajusté.
+Cada filtro de la primera capa mide $3\times3\times17$: recorre el tablero mirando a la vez las $3\times3$ casillas de alrededor en los 17 canales. Por eso las piezas propias y rivales están en la profundidad de cada filtro y no determinan cuántos filtros hay; el número de filtros es cuántos patrones distintos puede aprender la capa. Usé 64 en la primera capa y 128 en la segunda porque es la configuración inicial habitual para este tipo de redes: más filtros que canales de entrada, y el doble en la capa siguiente, que combina esos patrones en zonas más grandes del tablero.
+\newline
+Después de la primera capa densa hay un \textit{Dropout} con tasa de 0.5: en cada paso del entrenamiento apaga al azar la mitad de las salidas de esa capa, así que la red no puede depender de unas cuantas neuronas para recordar posiciones concretas. Al predecir no apaga nada. La sección siguiente explica cómo llegué a esta arquitectura.
 
 \begin{table}[H]
 	\centering
@@ -661,41 +663,52 @@ Cada filtro de la primera capa mide $3\times3\times17$: recorre el tablero miran
 		Conv. $3\times3$, 64 filtros & $8\times8\times64$ & 9,856 \\
 		Conv. $3\times3$, 128 filtros & $8\times8\times128$ & 73,856 \\
 		\textit{Flatten} & 8,192 & 0 \\
-		Densa de 1,024 & 1,024 & 8,389,632 \\
-		Densa de 4,096 & 4,096 & 4,198,400 \\
+		Densa de 2,048 & 2,048 & 16,779,264 \\
+		\textit{Dropout} (0.5) & 2,048 & 0 \\
+		Densa de 4,096 & 4,096 & 8,392,704 \\
 		\hline
-		Total & & 12,671,744 \\
+		Total & & 25,255,680 \\
 		\hline
 	\end{tabular}
-	\caption{Arquitectura del primer modelo. Las capas convolucionales y la primera densa usan ReLU; la última, softmax.}
+	\caption{Arquitectura del modelo. Las capas convolucionales y la primera densa usan ReLU; la última, softmax.}
 	\label{tab:arquitectura}
 \end{table}
 
-\subsection{Entrenamiento}
+\subsection{Cómo llegué a esta arquitectura}
 
-Este primer modelo lo entrené antes de usar todas las partidas, con una muestra al azar de una de cada cuatro: 3.6 millones de posiciones de entrenamiento y 450,591 de validación. Por eso sus resultados, y las líneas base con las que lo comparo en esta sección, son los de esa muestra. Entrené en lotes de 512, con Adam y durante 10 épocas; cada época tardó unos 12 minutos. La pérdida en validación baja hasta la tercera época (2.17) y después sube, mientras que en entrenamiento sigue bajando (figura~\ref{fig:curvas}): desde la cuarta época el modelo empieza a memorizar las posiciones de entrenamiento en lugar de aprender algo que sirva para posiciones nuevas. En la décima época acierta el 57.8\% en entrenamiento y solo el 36.3\% en validación. Por eso el modelo que evalúo es el de la tercera época, el que guardó \textit{ModelCheckpoint}. Al repetir este mismo entrenamiento en la GPU de la computadora (Apple M5), cada época tardó unos 5 minutos en lugar de 12, con la misma mejor época y prácticamente el mismo acierto en validación (39.1\% contra 39.2\%); por eso los modelos que siguen los entreno en la GPU.
+\paragraph{Red inicial.} Empecé con la misma red sin \textit{Dropout} y con una primera capa densa de 1,024 neuronas (12.7 millones de parámetros), entrenada con una muestra al azar de una de cada cuatro partidas: 3.6 millones de posiciones de entrenamiento y 450,591 de validación. Entrené en lotes de 512, con Adam y durante 10 épocas. La pérdida en validación baja hasta la tercera época (2.17) y después sube, mientras que en entrenamiento sigue bajando (figura~\ref{fig:curvas-inicial}): desde la cuarta época la red memoriza las posiciones de entrenamiento en lugar de aprender algo que sirva para posiciones nuevas. En la décima época acierta el 57.8\% en entrenamiento y solo el 36.3\% en validación. Con la red de la tercera época, la que guardó \textit{ModelCheckpoint}, el acierto \textit{top-1} en validación fue de 39.2\%, y el 2.6\% de sus primeras opciones era ilegal.
 
 \begin{figure}[H]
 	\centering
 	\includegraphics[width=\columnwidth]{figuras/modelo_curvas.png}
-	\caption{Pérdida y precisión por época del primer modelo en entrenamiento y validación. La línea punteada marca la época de menor pérdida en validación.}
-	\label{fig:curvas}
+	\caption{Pérdida y precisión por época de la red inicial en entrenamiento y validación. La línea punteada marca la época de menor pérdida en validación.}
+	\label{fig:curvas-inicial}
 \end{figure}
 
-\subsection{Resultados en validación}
+\paragraph{Pruebas para reducir el sobreajuste.} Probé varios cambios, uno a la vez, con una muestra de 250 mil posiciones de entrenamiento y 100 mil de validación: \textit{Dropout} con tasas de 0.3 a 0.7, antes y después de la primera capa densa; normalización por lotes (\textit{batch normalization}); una tasa de aprendizaje menor; lotes de 256 y de 1,024; y redes más pequeñas. Solo mejoró el \textit{Dropout} después de la primera capa densa: con una tasa de 0.6, el \textit{top-1} en validación subió de 29.8\% a 31.9\%, y el sobreajuste empezó en la séptima época en lugar de la tercera. Con \textit{Dropout}, agregar capacidad también ayudó: con el doble de filtros en las convoluciones el acierto llegó a 32.1\%, y con una primera capa densa de 2,048 neuronas la pérdida en validación bajó, aunque el acierto no subió. Los demás cambios movieron el acierto menos que la diferencia entre dos semillas (0.2 puntos).
 
-El modelo acierta la jugada del jugador en el 39.2\% de las posiciones de validación y la tiene entre sus cinco primeras opciones en el 77.0\% (tabla~\ref{tab:resultados-modelo}). Supera a las líneas base en todas las fases. En la apertura (51.7\%) supera al «libro» (42.8\%), así que hace algo más que recordar aperturas; en el medio juego y en el final casi duplica a la captura de mayor valor.
-\newline
-Sin descartar las jugadas ilegales, solo el 2.6\% de sus primeras opciones es ilegal, así que aprendió casi todas las reglas de movimiento. Esos errores se concentran en el final (5.7\%), la fase con menos posiciones para aprender.
-\newline
-Por apertura, el acierto casi no cambia (figura~\ref{fig:acierto-aperturas}): va de 37.6\% en las aperturas de flanco (A) a 40.4\% en las semiabiertas (B), y entre las diez familias más jugadas, de 36.5\% en el Queen's Pawn Game a 42.4\% en la Ruy López. En todas supera al «libro» por unos 20 puntos. Las aperturas en las que acierta menos son también las que el «libro» acierta menos, probablemente porque en ellas las posiciones se repiten menos entre partidas.
+\paragraph{Todas las partidas y la GPU.} Después pasé de la muestra a todas las partidas filtradas (14.4 millones de posiciones de entrenamiento y 1.8 millones de validación). Para que cada entrenamiento cupiera en unas cuantas horas, lo hice en la GPU de mi computadora (Apple M5): al repetir el entrenamiento de la red inicial ahí, cada época tardó unos 5 minutos en lugar de 12, con la misma mejor época y prácticamente el mismo acierto en validación (39.1\% contra 39.2\%).
 
-\begin{figure*}[t]
+\paragraph{Tres configuraciones con todos los datos.} Entrené las tres configuraciones que mejor resultaron con la muestra: \textit{Dropout} de 0.6; \textit{Dropout} de 0.5 con 128 y 256 filtros; y \textit{Dropout} de 0.5 con una primera capa densa de 2,048 neuronas. Cada una tardó entre 2.7 y 3.7 horas, con \textit{EarlyStopping} y como máximo 10, 6 y 7 épocas. Ninguna sobreajustó: en las tres la menor pérdida en validación llegó en la sexta época, y después casi no cambió. El acierto \textit{top-1} en validación fue de 41.3\%, 42.3\% y 43.1\%, y la tercera fue la mejor en todas las fases. Con la muestra, la capa densa ancha era la que menos aportaba; con 58 veces más posiciones de entrenamiento ya tiene datos suficientes para aprovechar sus parámetros sin memorizarlos. Por eso elegí esa configuración.
+
+\subsection{Entrenamiento final}
+
+Con la configuración elegida entrené un modelo nuevo con entrenamiento y validación juntos (16.2 millones de posiciones), durante 6 épocas, las de su menor pérdida en validación en la prueba anterior. Como ya no hay validación que vigilar, el número de épocas quedó fijo de antemano. Tardó 205 minutos en la GPU; la pérdida bajó de 2.45 a 2.01 y el acierto en entrenamiento subió de 34.4\% a 41.0\% (figura~\ref{fig:curvas-final}).
+
+\begin{figure}[H]
 	\centering
-	\includegraphics[width=\textwidth]{figuras/acierto_por_apertura.png}
-	\caption{Acierto \textit{top-1} del modelo y del «libro» en validación, por grupo ECO y por las diez familias de aperturas más jugadas. «Otras» reúne al resto de las familias.}
-	\label{fig:acierto-aperturas}
-\end{figure*}
+	\includegraphics[width=\columnwidth]{figuras/modelo_final_curvas.png}
+	\caption{Pérdida y precisión por época del modelo final, entrenado con entrenamiento y validación juntos.}
+	\label{fig:curvas-final}
+\end{figure}
+
+\subsection{Resultados en prueba}
+
+Este modelo es el único que evalué en el conjunto de prueba, y solo una vez. Acierta la jugada del jugador en el 43.0\% de las posiciones y la tiene entre sus cinco primeras opciones en el 81.1\% (tabla~\ref{tab:resultados-modelo}). Es casi lo mismo que la configuración elegida acertó en validación (43.1\%), así que elegirla con validación no infló el resultado.
+\newline
+Para compararlo calculé las líneas base en las posiciones de prueba, con el «libro» y la jugada más frecuente sacados de entrenamiento y validación, los mismos datos que vio el modelo. Supera a todas en todas las fases. En la apertura (53.9\%) supera al «libro» (47.3\%), así que hace algo más que recordar aperturas, y en el medio juego y en el final duplica a la captura de mayor valor.
+\newline
+Sin descartar las jugadas ilegales, solo el 1.4\% de sus primeras opciones es ilegal, contra el 2.6\% de la red inicial, así que aprendió casi todas las reglas de movimiento. Esos errores se concentran en el final (3.8\%), la fase con menos posiciones para aprender.
 
 \begin{table}[H]
 	\centering
@@ -705,24 +718,20 @@ Por apertura, el acierto casi no cambia (figura~\ref{fig:acierto-aperturas}): va
 		\hline
 		Corte & \textit{Top-1} & \textit{Top-3} & \textit{Top-5} & \shortstack[r]{Línea\\base} & Ilegal \\
 		\hline
-		Todas & 39.2 & 65.8 & 77.0 & 18.7 & 2.6 \\
-		Apertura & 51.7 & 80.9 & 90.6 & 42.8 & 0.2 \\
-		Medio juego & 33.3 & 58.4 & 70.2 & 17.5 & 3.3 \\
-		Final & 35.4 & 63.1 & 75.8 & 20.5 & 5.7 \\
+		Todas & 43.0 & 70.3 & 81.1 & 20.3 & 1.4 \\
+		Apertura & 53.9 & 82.7 & 91.9 & 47.3 & 0.1 \\
+		Medio juego & 37.9 & 64.2 & 75.6 & 17.6 & 1.7 \\
+		Final & 40.1 & 68.5 & 80.4 & 20.6 & 3.8 \\
 		\hline
 	\end{tabular}
-	\caption{Acierto del primer modelo en validación (\%), frente al \textit{top-1} de la mejor línea base de cada corte en la misma muestra. «Ilegal»: primeras opciones ilegales antes de descartarlas.}
+	\caption{Acierto del modelo en prueba (\%), frente al \textit{top-1} de la mejor línea base de cada corte en las mismas posiciones («libro» en todas y en la apertura; captura de mayor valor en el medio juego y en el final). «Ilegal»: primeras opciones ilegales antes de descartarlas.}
 	\label{tab:resultados-modelo}
 \end{table}
 
-\subsection{Pruebas para reducir el sobreajuste}
-
-Para reducir el sobreajuste probé varios cambios, uno a la vez, con una muestra de 250 mil posiciones de entrenamiento y 100 mil de validación: \textit{Dropout} con tasas de 0.3 a 0.7, antes y después de la primera capa densa; normalización por lotes (\textit{batch normalization}); una tasa de aprendizaje menor; lotes de 256 y de 1,024; y redes más pequeñas. Solo mejoró el \textit{Dropout} después de la primera capa densa: con una tasa de 0.6, el \textit{top-1} en validación subió de 29.8\% a 31.9\%, y el sobreajuste empezó en la séptima época en lugar de la tercera. Con \textit{Dropout}, usar más filtros en las convoluciones dio el mejor resultado (32.1\%). Los demás cambios movieron el acierto menos que la diferencia entre dos semillas (0.2 puntos).
-
-\subsection{Fuerza de juego (estimación preliminar)}
+\subsection{Fuerza de juego}
 \label{sec:fuerza}
 
-Para tener una primera idea del nivel del modelo, lo hice jugar contra una escalera de rivales:
+Para estimar el nivel del modelo lo hice jugar contra una escalera de rivales:
 \begin{itemize}[leftmargin=*]
 	\item una jugada legal al azar;
 	\item una regla que siempre hace la captura de mayor valor, la misma línea base de antes, ahora como jugador;
@@ -730,7 +739,7 @@ Para tener una primera idea del nivel del modelo, lo hice jugar contra una escal
 	\item las redes Maia de 1100, 1500 y 1900, que imitan a jugadores de esos niveles y juegan sin buscar;
 	\item Stockfish con su fuerza limitada a 1320, el nivel más bajo que permite.
 \end{itemize}
-Cada pareja jugó desde 20 aperturas, una vez con cada color. Cada apertura es la secuencia de 8 \textit{plies} más frecuente de una de las 20 familias más jugadas en la muestra. Cada rival jugó 40 partidas contra sus vecinos de la escalera. El modelo jugó 10 contra cada rival y completó 40 contra los que le hicieron entre el 10\% y el 90\% de los puntos. En total fueron 600 partidas.
+Cada pareja jugó desde 20 aperturas, una vez con cada color. Cada apertura es la secuencia de 8 \textit{plies} más frecuente de una de las 20 familias más jugadas. Cada rival jugó 40 partidas contra sus vecinos de la escalera. El modelo jugó 10 contra cada rival y completó 40 contra los que le hicieron entre el 10\% y el 90\% de los puntos. En total fueron 690 partidas.
 \newline
 Con todas ellas estimé el Elo de cada jugador por máxima verosimilitud con el modelo logístico del Elo, contando las tablas como medio punto y fijando a Stockfish 1320 en 1320 (tabla~\ref{tab:elo}). Por eso todos los números están en la escala de Stockfish, que no es la del rating de Lichess.
 
@@ -742,21 +751,50 @@ Con todas ellas estimé el Elo de cada jugador por máxima verosimilitud con el 
 		\hline
 		Jugador & Elo & IC 95\% & Modelo \\
 		\hline
-		Azar & 940 & 813--1067 & 79 (40) \\
-		Captura & 1004 & 887--1120 & 64 (40) \\
-		\textbf{Modelo} & \textbf{1125} & \textbf{1017--1232} & -- \\
-		Stockfish 1320 & 1320 & ancla & 5 (10) \\
-		Maia 1100 & 1356 & 1278--1435 & 0 (10) \\
-		Maia 1500 & 1421 & 1346--1496 & 5 (10) \\
-		Stockfish prof.~1 & 1486 & 1391--1582 & 21 (40) \\
-		Maia 1900 & 1537 & 1444--1629 & 0 (10) \\
+		Azar & 938 & 823--1052 & 82 (40) \\
+		Captura & 998 & 894--1103 & 71 (40) \\
+		\textbf{Modelo} & \textbf{1181} & \textbf{1105--1257} & -- \\
+		Stockfish 1320 & 1320 & ancla & 31 (40) \\
+		Maia 1100 & 1371 & 1299--1444 & 15 (40) \\
+		Maia 1500 & 1442 & 1370--1515 & 5 (10) \\
+		Stockfish prof.~1 & 1511 & 1422--1601 & 21 (40) \\
+		Maia 1900 & 1549 & 1462--1636 & 14 (40) \\
 		\hline
 	\end{tabular}
 	\caption{Elo estimado de cada jugador en la escala de Stockfish, con su intervalo de confianza del 95\%, y porcentaje de los puntos que hizo el modelo contra él (entre paréntesis, el número de partidas). «Captura»: captura de mayor valor; «prof.~1»: profundidad 1.}
 	\label{tab:elo}
 \end{table}
 
-El modelo queda en 1125, con un intervalo de 1017 a 1232: por encima del azar y de la regla de capturas, y claramente por debajo de Maia y de Stockfish 1320, contra los que hizo entre el 0\% y el 5\% de los puntos. La estimación es preliminar por dos razones. Primero, entre los rivales débiles y los fuertes casi no hay partidas parejas, así que el resultado depende mucho de Stockfish a profundidad 1, que se comporta distinto a los demás: le gana a Maia, pero contra el modelo empata 17 de 40 partidas por repetición. Sin ese rival, la estimación baja a 970, con un intervalo de $\pm$164. Segundo, el modelo no sabe rematar: contra el azar ganó 23 partidas por mate, pero empató 9 por ahogado y 8 por repetición o por la regla de las 50 jugadas, siempre con al menos 15 puntos de material de ventaja.
+El modelo queda en 1181, con un intervalo de 1105 a 1257: por encima del azar y de la regla de capturas, y por debajo de Maia y de Stockfish 1320, aunque contra este último hizo el 31\% de los puntos. Con la misma escalera, la red inicial había quedado en 1125. La estimación ya no depende de un solo rival: sin las partidas contra Stockfish a profundidad 1, que se comporta distinto a los demás (le gana a Maia 1100 y a Maia 1500), queda en 1148 $\pm$ 83.
+
+\subsection{Áreas de mejora}
+
+Para ver en qué falla el modelo, analicé con Stockfish, a 10 jugadas de profundidad, las 8,554 jugadas que hizo en esas 690 partidas, sin contar las de la apertura fija. En cada jugada medí cuánto empeora la posición frente a la mejor jugada, en centipeones (centésimas del valor de un peón); si tenía un mate en una jugada y lo dio; y qué probabilidad les asignó a las jugadas ilegales antes de descartarlas (tabla~\ref{tab:analisis-partidas}).
+
+\begin{table}[H]
+	\centering
+	\footnotesize
+	\setlength{\tabcolsep}{3pt}
+	\begin{tabular}{lrrrr}
+		\hline
+		Fase & Pérdida & Graves & Ilegal & Mates \\
+		\hline
+		Apertura & 43 & 2.9 & 0.3 & 1/2 \\
+		Medio juego & 98 & 9.2 & 5.8 & 43/357 \\
+		Final & 54 & 3.6 & 16.3 & 8/64 \\
+		\hline
+		Todas & 80 & 7.1 & 6.8 & 52/423 \\
+		\hline
+	\end{tabular}
+	\caption{Jugadas del modelo en las partidas de la escalera, analizadas con Stockfish (1,497 jugadas en la apertura, 5,511 en el medio juego y 1,546 en el final). «Pérdida»: pérdida media en centipeones; «graves»: jugadas que pierden 300 centipeones o más, más o menos una pieza menor (\%); «ilegal»: probabilidad media que el modelo asignó a jugadas ilegales (\%); «mates»: veces que dio mate entre las que tenía un mate en una.}
+	\label{tab:analisis-partidas}
+\end{table}
+
+\paragraph{Rematar las partidas ganadas.} Es la falla más clara. En 423 jugadas tenía un mate en una y solo lo dio en 52 (12\%); en 415 de esas jugadas llevaba al menos 5 puntos de material de ventaja. Con esa ventaja, 42 partidas terminaron en tablas: 18 por ahogado y 24 por repetición. Hay dos causas probables. Primero, entre jugadores de 2200 o más, quien va muy abajo suele abandonar, así que en los datos casi no hay posiciones con tanta ventaja ni jugadas de mate en ellas. Segundo, el modelo solo ve la posición actual y no sabe que la está repitiendo. Se podría agregar a la entrada cuántas veces se ha repetido la posición, revisar antes de elegir si alguna jugada legal da mate, y entrenar también con partidas que terminan en mate.
+
+\paragraph{Errores tácticos en el medio juego.} En el medio juego el 9.2\% de sus jugadas pierde al menos una pieza menor, contra el 2.9\% en la apertura y el 3.6\% en el final. Es también la fase en la que menos acierta en prueba (37.9\%). El modelo elige la jugada que se parece a la de una persona, pero no calcula qué pasa después. Además, sus dos capas convolucionales solo combinan zonas de $5\times5$ casillas, así que las relaciones a lo largo de todo el tablero, como una dama o un alfil que ataca desde lejos, quedan a cargo de las capas densas. Más capas convolucionales, o una búsqueda corta que revise las primeras opciones uno o dos \textit{plies} adelante con una red que estime quién va ganando, podrían reducir estos errores.
+
+\paragraph{Posiciones poco comunes.} La probabilidad que asigna a jugadas ilegales sube del 0.3\% en la apertura al 16.3\% en el final, y del 2.4\% en las posiciones con material parejo al 15.2\% cuando va 5 puntos o más abajo. En las posiciones que se parecen poco a las de entrenamiento todavía duda de cómo se mueven las piezas. Se podría entrenar descartando las jugadas ilegales dentro del \textit{softmax}, para que la red no gaste capacidad en aprender las reglas, y agregar más finales y partidas de jugadores de menor nivel, donde estas posiciones son más frecuentes.
 
 % =====================================================================
 \onecolumn

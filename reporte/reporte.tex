@@ -95,6 +95,7 @@
 \setlength{\@dblfpsep}{20pt}
 \setlength{\@dblfpbot}{0pt plus 1fil}
 \makeatother
+\renewcommand{\dbltopfraction}{0.85}
 
 \title{Reporte de implementación.}
 \author{Mauricio Olguín Sánchez - A01711522}
@@ -168,13 +169,14 @@
     \vfill
 
     \begin{center}
-        {\large Octubre 2026}
+        {\large Noviembre 2026}
     \end{center}
 \end{titlepage}
 
 \onecolumn
 \pagenumbering{roman}
 \thispagestyle{plain}
+\setcounter{tocdepth}{2}
 \tableofcontents
 \twocolumn
 \pagenumbering{arabic}
@@ -192,10 +194,7 @@ Como aprende de partidas entre jugadores humanos de nivel alto, se espera que ju
 
 \subsection{Alcance}
 
-\begin{itemize}[leftmargin=*]
-	\item \textbf{Núcleo:} una red que, a partir de una posición, elige la jugada. Se entrena con partidas de Lichess y se evalúa con la precisión \textit{top-k}.
-	\item \textbf{Fuera de alcance:} aprendizaje por refuerzo, auto-juego y búsqueda MCTS. Quedan como trabajo futuro.
-\end{itemize}
+Una red que, a partir de una posición, elige la jugada. Se entrena con partidas de Lichess y se evalúa con la precisión \textit{top-k}.
 
 % =====================================================================
 \section{El ajedrez en este proyecto}
@@ -278,23 +277,36 @@ Primero construí y probé el \textit{pipeline} con el archivo de marzo de 2013,
 
 \subsection{Campos de cada partida}
 
-En el PGN, cada partida empieza con sus encabezados, una línea por campo con el nombre del campo y su valor entre comillas, y sigue con sus jugadas. Estos son los campos, con los de blancas y negras agrupados, y el uso que les doy:
-\begin{description}[style=unboxed]
-	\item[Event - categórico.] Tipo de partida: su ritmo (UltraBullet, Bullet, Blitz, Rapid, Classical o Correspondence) y si se jugó fuera de torneo, en un torneo de Lichess o en un torneo suizo; en los dos últimos casos incluye el enlace al torneo. Lo uso en el filtro de ritmo para descartar las partidas Bullet y UltraBullet, y en el análisis exploratorio para comparar los ritmos.
-	\item[Site - texto.] Enlace a la partida en Lichess. No lo uso.
-	\item[Date, UTCDate, UTCTime - fecha y hora.] Fecha y hora, en tiempo universal (UTC), en que empezó la partida. En este mes Date y UTCDate siempre coinciden. No los uso.
-	\item[Round - texto.] Ronda del torneo; en Lichess siempre vale «-». No lo uso.
-	\item[White, Black - texto.] Nombres de usuario de las blancas y de las negras. No los uso.
-	\item[Result - categórico.] Resultado: 1-0 si ganan las blancas, 0-1 si ganan las negras, 1/2-1/2 en tablas y * si la partida quedó sin terminar. No lo uso.
-	\item[WhiteElo, BlackElo - numérico.] Elo de cada jugador al empezar la partida. Los uso en el filtro de nivel y guardo el del jugador que mueve en cada posición.
-	\item[WhiteRatingDiff, BlackRatingDiff - numérico.] Puntos de Elo que ganó o perdió cada jugador con la partida, por ejemplo +11 o -7. Faltan en una pequeña parte de las partidas. No los uso.
-	\item[WhiteTitle, BlackTitle - categórico.] Título del jugador, solo cuando tiene uno: títulos de ajedrez como GM, IM, FM o NM, el título LM que otorga Lichess, o BOT para las cuentas de programas de ajedrez. Los uso en el filtro de cuentas BOT.
-	\item[ECO - categórico.] Código de la apertura en la \textit{Encyclopaedia of Chess Openings}, de A00 a E99. Lichess lo asigna con su propia tabla de aperturas. Solo lo uso en el análisis exploratorio y para ver el acierto del modelo por apertura.
-	\item[Opening - categórico.] Nombre de la apertura, por ejemplo «Sicilian Defense: Smith-Morra Gambit». Solo lo uso en el análisis exploratorio y para ver el acierto del modelo por apertura.
-	\item[TimeControl - texto.] Control de tiempo: segundos iniciales de cada jugador más segundos que se suman por jugada, por ejemplo 180+2, o «-» en las partidas por correspondencia. Lichess deriva el ritmo de Event a partir de este campo, así que no lo uso directamente.
-	\item[Termination - categórico.] Cómo terminó la partida: Normal (mate, rendición o tablas), Time forfeit (un jugador se quedó sin tiempo) y, en pocos casos, Abandoned, Insufficient material, Unterminated o Rules infraction. Solo lo uso en el análisis exploratorio.
-	\item[Jugadas - texto.] El cuerpo de la partida: las jugadas numeradas en SAN, cada una con un comentario con el tiempo que le quedaba en el reloj a quien la jugó y, en las partidas analizadas por computadora (cerca de una de cada diez), con la evaluación de la posición según un motor; al final se repite el resultado. Uso las jugadas para reconstruir cada posición e ignoro los comentarios.
-\end{description}
+En el PGN, cada partida empieza con sus encabezados, una línea por campo con el nombre del campo y su valor entre comillas, y sigue con sus jugadas. La tabla~\ref{tab:campos} muestra los campos, con los de blancas y negras agrupados, y el uso que les doy.
+
+\begin{table*}[!t]
+	\centering
+	\footnotesize
+	\setlength{\tabcolsep}{4pt}
+	\renewcommand{\arraystretch}{1.15}
+	\begin{tabular}{L{2.9cm}L{1.8cm}L{6.0cm}L{3.7cm}}
+		\hline
+		Campo & Tipo & Descripción & Uso \\
+		\hline
+		Event & categórico & Ritmo (UltraBullet, Bullet, Blitz, Rapid, Classical o Correspondence) y si es de torneo. & Filtro de ritmo (descarta Bullet y UltraBullet) y comparación de ritmos en el análisis. \\
+		Site & texto & Enlace a la partida en Lichess. & -- \\
+		Date, UTCDate, UTCTime & fecha y hora & Cuándo empezó la partida, en UTC. & -- \\
+		Round & texto & Ronda del torneo; en Lichess siempre vale «-». & -- \\
+		White, Black & texto & Nombres de usuario de las blancas y de las negras. & -- \\
+		Result & categórico & 1-0, 0-1, 1/2-1/2 o * (sin terminar). & -- \\
+		WhiteElo, BlackElo & numérico & Elo de cada jugador al empezar la partida. & Filtro de nivel; se guarda el del jugador que mueve en cada posición. \\
+		WhiteRatingDiff, BlackRatingDiff & numérico & Puntos de Elo que ganó o perdió cada jugador con la partida. & -- \\
+		WhiteTitle, BlackTitle & categórico & Título del jugador, si tiene: GM, IM, FM, NM, LM o BOT (cuentas de programas de ajedrez). & Filtro de cuentas BOT. \\
+		ECO & categórico & Código de apertura de la \textit{Encyclopaedia of Chess Openings} (A00 a E99). & Análisis y acierto por apertura. \\
+		Opening & categórico & Nombre de la apertura, por ejemplo «Sicilian Defense: Smith-Morra Gambit». & Análisis y acierto por apertura. \\
+		TimeControl & texto & Segundos iniciales más segundos que se suman por jugada, por ejemplo 180+2. & -- \\
+		Termination & categórico & Cómo terminó: Normal (mate, rendición o tablas), Time forfeit (sin tiempo) y, en pocos casos, otras causas. & Análisis de cómo terminan las partidas. \\
+		Jugadas & texto & Jugadas numeradas en SAN, cada una con un comentario con el tiempo restante de quien la jugó y, en una de cada diez partidas, la evaluación de un motor. & Reconstrucción de cada posición; los comentarios se ignoran. \\
+		\hline
+	\end{tabular}
+	\caption{Campos de cada partida del PGN y uso que les doy. Los que no se usan llevan «--».}
+	\label{tab:campos}
+\end{table*}
 
 \subsection{Proceso de ETL}
 
@@ -382,18 +394,7 @@ Como las posiciones consecutivas de una misma partida se parecen mucho entre sí
 
 \subsubsection{\textit{Loading}}
 
-El conjunto procesado se guarda en disco para no repetir la transformación cada vez que se entrena. Tiene una fila por posición, con estas columnas:
-\begin{description}[style=unboxed]
-	\item[Tablero - 64 enteros de 0 a 12.] Contenido de cada casilla, ya orientado hacia quien mueve y con las casillas numeradas como en la representación de la jugada: 0 si está vacía, de 1 a 6 para el peón, caballo, alfil, torre, dama y rey del jugador que mueve, y de 7 a 12 para las mismas piezas del rival.
-	\item[Derechos de enroque - entero de 0 a 15.] Cuatro bits, uno por cada enroque que todavía se puede hacer: corto y largo del jugador que mueve y corto y largo del rival.
-	\item[Captura al paso - entero de -1 a 7.] Columna, de a (0) a h (7), de la casilla en la que se puede capturar al paso, o -1 si no hay ninguna captura al paso legal. Como esa casilla siempre está en la sexta fila desde el punto de vista de quien mueve, basta con la columna.
-	\item[Jugada - entero de 0 a 4,095.] La jugada que se jugó en la posición, la etiqueta que debe predecir el modelo.
-	\item[Partida - entero.] Número de la partida de la que sale la posición, de 0 a 1,505,792, asignado en el orden en que se leyeron (no es el identificador de Lichess). Sirve para la división por partida.
-	\item[Ply - entero de 0 a 599.] Número de \textit{plies} que se jugaron antes de la posición, de modo que 0 es la posición inicial. Lo uso en el análisis exploratorio para estudiar las fases de la partida.
-	\item[Elo - entero de 2,200 a 3,064.] Elo del jugador que mueve, tomado de WhiteElo o de BlackElo según el turno. También lo uso en el análisis exploratorio.
-	\item[Jugadas legales - lista de pares de enteros.] Cada jugada legal de la posición, codificada como la etiqueta, junto con el valor de la pieza que captura (0 si no captura). Su longitud cambia de una posición a otra.
-\end{description}
-Los canales de la tabla~\ref{tab:canales} se construyen a partir de las tres primeras columnas al momento de entrenar.
+El conjunto procesado se guarda en disco para no repetir la transformación cada vez que se entrena. Cada fila es una posición, con su tablero (junto con los derechos de enroque y la captura al paso), la jugada que se jugó, la partida de la que sale, su \textit{ply}, el Elo del jugador que mueve y la lista de sus jugadas legales. Los canales de la tabla~\ref{tab:canales} se construyen a partir del tablero, los derechos de enroque y la captura al paso al momento de entrenar.
 \newline
 La división en entrenamiento, validación y prueba se hace \textbf{por partida y no por posición}. Si se dividiera por posición, posiciones casi idénticas de la misma partida quedarían en entrenamiento y en prueba, y las métricas saldrían infladas por una fuga de datos. Mezclé las partidas con la semilla 42 y asigné 80\%, 10\% y 10\% de ellas a cada conjunto (tabla~\ref{tab:split}).
 
@@ -518,16 +519,9 @@ En esas posiciones repetidas, la jugada más frecuente se elige el 62.3\% de las
 \subsection{Aperturas y partidas}
 \label{sec:eda-aperturas}
 
-Las secciones anteriores describen posiciones; esta describe las partidas de las que salen. Lichess anota en cada partida el código ECO y el nombre de su apertura con una tabla propia de 500 códigos y 3,177 nombres. Cada nombre tiene la forma «familia: variante», por ejemplo «Sicilian Defense: Najdorf Variation», y la tabla tiene 150 familias. En mis partidas aparecen 497 códigos, 2,823 nombres y 143 familias.
+Las secciones anteriores describen posiciones; esta describe las partidas de las que salen.
 \newline
-\textbf{Aperturas.} La Defensa Siciliana sola está en el 17.4\% de las partidas; le siguen la Francesa (6.7\%), la Caro-Kann (6.1\%) y la Inglesa (6.1\%) (figura~\ref{fig:eda-familias}). Bastan 8 familias para cubrir la mitad de las partidas, 25 para el 80\% y 55 para el 95\% (figura~\ref{fig:eda-aperturas-acumulado}). Por grupos ECO, las aperturas semiabiertas (B, 32.9\%) y las de flanco y otras (A, 29.3\%) son mayoría; siguen las abiertas y la Francesa (C, 16.5\%), las cerradas y semicerradas (D, 14.5\%) y las indias (E, 6.8\%).
-
-\begin{figure}[H]
-	\centering
-	\includegraphics[width=\columnwidth]{figuras/eda_familias_aperturas.png}
-	\caption{Porcentaje de las partidas de cada una de las 20 familias de aperturas más jugadas, según el nombre que les asigna Lichess.}
-	\label{fig:eda-familias}
-\end{figure}
+\textbf{Aperturas.} Lichess anota en cada partida el nombre de su apertura, con la forma «familia: variante», por ejemplo «Sicilian Defense: Najdorf Variation». La Defensa Siciliana sola está en el 17.4\% de las partidas; le siguen la Francesa (6.7\%), la Caro-Kann (6.1\%) y la Inglesa (6.1\%). Bastan 8 familias para cubrir la mitad de las partidas, 25 para el 80\% y 55 para el 95\% (figura~\ref{fig:eda-aperturas-acumulado}).
 
 \begin{figure}[H]
 	\centering
@@ -545,22 +539,7 @@ Las secciones anteriores describen posiciones; esta describe las partidas de las
 	\label{fig:eda-primera-jugada}
 \end{figure*}
 
-\textbf{Ritmos.} El conjunto es casi todo Blitz: el 92.2\% de las partidas. Las Rápidas son el 7.4\% y las Clásicas y por correspondencia juntas, el 0.4\%. El reparto de aperturas cambia poco con el ritmo: en las Rápidas hay menos aperturas de flanco (24.0\% contra 29.8\% en Blitz) y más abiertas (19.9\% contra 16.2\%).
-\newline
-\textbf{Cómo terminan.} En el 23.3\% de las partidas a un jugador se le acabó el tiempo: el 24.3\% en Blitz y el 11.3\% en Rápidas (figura~\ref{fig:eda-terminacion}). Una parte importante de las jugadas del conjunto se hizo con prisa. En las Clásicas y por correspondencia, el 34.9\% quedó sin terminar.
-
-\begin{figure}[H]
-	\centering
-	\includegraphics[width=\columnwidth]{figuras/eda_terminacion.png}
-	\caption{Cómo terminan las partidas de cada ritmo. «Otras» reúne las partidas abandonadas, las que terminan por material insuficiente y las que terminan por una infracción.}
-	\label{fig:eda-terminacion}
-\end{figure}
-
-\textbf{Duración.} Una partida dura en mediana 74 \textit{plies} (37 jugadas por bando), y el 90\% dura entre 32 y 140 \textit{plies}.
-
-\subsection{Conclusiones del análisis}
-
-Tres de cada cuatro posiciones de apertura se repiten entre partidas, y en las posiciones repetidas el acierto \textit{top-1} no puede pasar de alrededor del 62\%. Las clases están muy desbalanceadas: unas pocas jugadas concentran la mitad de los ejemplos y el resto aparece muy poco.
+\textbf{Ritmos y duración.} El conjunto es casi todo Blitz: el 92.2\% de las partidas; las Rápidas son el 7.4\% y las Clásicas y por correspondencia juntas, el 0.4\%. En el 23.3\% de las partidas a un jugador se le acabó el tiempo. Una partida dura en mediana 74 \textit{plies} (37 jugadas por bando), y el 90\% dura entre 32 y 140 \textit{plies}.
 
 % =====================================================================
 \section{Metodología de evaluación}
@@ -582,15 +561,6 @@ También mido qué porcentaje de sus primeras opciones es ilegal, para saber si 
 La métrica principal se calcula sobre \textbf{todas} las posiciones, incluidas las de apertura. Además la desgloso por fase (apertura, medio juego y final).
 
 \subsection{Conjuntos de entrenamiento y validación}
-
-Antes de comparar nada revisé que entrenamiento y validación se parecieran. Las distribuciones del Elo, del \textit{ply} y de las fases prácticamente se enciman (figura~\ref{fig:train-val}).
-
-\begin{figure*}[t]
-	\centering
-	\includegraphics[width=\textwidth]{figuras/comparacion_train_val.png}
-	\caption{Elo del jugador que mueve, \textit{ply} y fase de la partida en entrenamiento (\textit{train}) y validación (\textit{val}).}
-	\label{fig:train-val}
-\end{figure*}
 
 El 24.1\% de las posiciones de validación aparece idéntica en entrenamiento. Casi todas son de apertura: ahí está repetido el 74.5\% de las posiciones, contra el 1.7\% en el medio juego y el 1.4\% en el final. No es una fuga de datos: son posiciones de partidas distintas que coinciden porque los jugadores repiten las mismas aperturas. En ellas se puede acertar solo con memoria, que es lo que mide la línea base del «libro».
 
@@ -637,20 +607,20 @@ El modelo debe superar al «libro» en la apertura, donde se puede acertar de me
 \section{Primer modelo}
 \label{sec:modelo}
 
-\subsection{Arquitectura}
-
-El modelo es una red convolucional sencilla (figura~\ref{fig:arquitectura} y tabla~\ref{tab:arquitectura}). Recibe el tablero con los 17 canales de la tabla~\ref{tab:canales} y devuelve una probabilidad para cada una de las 4,096 jugadas posibles. Las dos capas convolucionales usan filtros de $3\times3$ con relleno (\textit{padding}) para conservar el tamaño de $8\times8$. No usé \textit{pooling}, porque en un tablero tan pequeño cada reducción borra casillas que importan. Casi todos los parámetros están en las dos capas densas.
-\newline
-Cada filtro de la primera capa mide $3\times3\times17$: recorre el tablero mirando a la vez las $3\times3$ casillas de alrededor en los 17 canales. Las piezas propias y rivales están en la profundidad de cada filtro y no determinan cuántos filtros hay; el número de filtros es cuántos patrones distintos puede aprender la capa. Usé 64 en la primera capa y 128 en la segunda porque es la configuración inicial habitual para este tipo de redes: más filtros que canales de entrada, y el doble en la capa siguiente, que combina esos patrones en zonas más grandes del tablero.
-\newline
-Después de la primera capa densa hay un \textit{Dropout} con tasa de 0.5: en cada paso del entrenamiento apaga al azar la mitad de las salidas de esa capa, para que la red no dependa de unas cuantas neuronas para recordar posiciones concretas. Al predecir no apaga nada.
-
-\begin{figure*}[t]
+\begin{figure*}[!t]
 	\centering
 	\includegraphics[width=\textwidth]{figuras/arquitectura.pdf}
 	\caption{Arquitectura del modelo: del tablero a la probabilidad de cada una de las 4,096 jugadas. Bajo cada capa, el tamaño de su salida.}
 	\label{fig:arquitectura}
 \end{figure*}
+
+\subsection{Arquitectura}
+
+El modelo es una red convolucional sencilla, implementada y entrenada con TensorFlow/Keras (figura~\ref{fig:arquitectura} y tabla~\ref{tab:arquitectura}). Recibe el tablero con los 17 canales de la tabla~\ref{tab:canales} y devuelve una probabilidad para cada una de las 4,096 jugadas posibles. Las dos capas convolucionales usan filtros de $3\times3$ con relleno (\textit{padding}) para conservar el tamaño de $8\times8$. No usé \textit{pooling}, porque en un tablero tan pequeño cada reducción borra casillas que importan. Casi todos los parámetros están en las dos capas densas.
+\newline
+Cada filtro de la primera capa mide $3\times3\times17$: recorre el tablero mirando a la vez las $3\times3$ casillas de alrededor en los 17 canales. Las piezas propias y rivales están en la profundidad de cada filtro y no determinan cuántos filtros hay; el número de filtros es cuántos patrones distintos puede aprender la capa. Usé 64 en la primera capa y 128 en la segunda porque es la configuración inicial habitual para este tipo de redes: más filtros que canales de entrada, y el doble en la capa siguiente, que combina esos patrones en zonas más grandes del tablero.
+\newline
+Después de la primera capa densa hay un \textit{Dropout} con tasa de 0.5: en cada paso del entrenamiento apaga al azar la mitad de las salidas de esa capa, para que la red no dependa de unas cuantas neuronas para recordar posiciones concretas. Al predecir no apaga nada.
 
 \begin{table}[H]
 	\centering
@@ -739,37 +709,34 @@ Para estimar el nivel del modelo lo hice jugar contra una escalera de rivales:
 	\item las redes Maia de 1100, 1500 y 1900, que imitan a jugadores de esos niveles y juegan sin buscar;
 	\item Stockfish con su fuerza limitada a 1320, el nivel más bajo que permite.
 \end{itemize}
-Cada pareja jugó desde 20 aperturas, una vez con cada color. Cada apertura es la secuencia de 8 \textit{plies} más frecuente de una de las 20 familias más jugadas. Cada rival jugó 40 partidas contra sus vecinos de la escalera. El modelo jugó 10 contra cada rival y completó 40 contra los que le hicieron entre el 10\% y el 90\% de los puntos. En total fueron 690 partidas.
-\newline
-Con todas ellas estimé el Elo de cada jugador por máxima verosimilitud con el modelo logístico del Elo, contando las tablas como medio punto y fijando a Stockfish 1320 en 1320 (tabla~\ref{tab:elo}).
+Cada pareja jugó desde 20 aperturas, una vez con cada color. Cada apertura es la secuencia de 8 \textit{plies} más frecuente de una de las 20 familias más jugadas. El modelo jugó 10 partidas contra cada rival y completó 40 contra los que le hicieron entre el 10\% y el 90\% de los puntos. La tabla~\ref{tab:rivales} muestra el resultado contra cada uno, con las tablas contadas como medio punto.
 
 \begin{table}[H]
 	\centering
 	\footnotesize
 	\setlength{\tabcolsep}{3pt}
-	\begin{tabular}{lrrr}
+	\begin{tabular}{lrr}
 		\hline
-		Jugador & Elo & IC 95\% & Modelo \\
+		Rival & Partidas & Puntos (\%) \\
 		\hline
-		Azar & 938 & 823--1052 & 82 (40) \\
-		Captura & 998 & 894--1103 & 71 (40) \\
-		\textbf{Modelo} & \textbf{1181} & \textbf{1105--1257} & -- \\
-		Stockfish 1320 & 1320 & ancla & 31 (40) \\
-		Maia 1100 & 1371 & 1299--1444 & 15 (40) \\
-		Maia 1500 & 1442 & 1370--1515 & 5 (10) \\
-		Stockfish prof.~1 & 1511 & 1422--1601 & 21 (40) \\
-		Maia 1900 & 1549 & 1462--1636 & 14 (40) \\
+		Azar & 40 & 82 \\
+		Captura & 40 & 71 \\
+		Stockfish 1320 & 40 & 31 \\
+		Stockfish prof.~1 & 40 & 21 \\
+		Maia 1100 & 40 & 15 \\
+		Maia 1900 & 40 & 14 \\
+		Maia 1500 & 10 & 5 \\
 		\hline
 	\end{tabular}
-	\caption{Elo estimado de cada jugador en la escala de Stockfish, con su intervalo de confianza del 95\%, y porcentaje de los puntos que hizo el modelo contra él (entre paréntesis, el número de partidas). «Captura»: captura de mayor valor; «prof.~1»: profundidad 1.}
-	\label{tab:elo}
+	\caption{Resultado del modelo contra cada rival: partidas jugadas y porcentaje de los puntos que hizo el modelo. «Captura»: captura de mayor valor; «prof.~1»: profundidad 1.}
+	\label{tab:rivales}
 \end{table}
 
-El modelo queda en 1181: por encima del azar y de la regla de capturas, y por debajo de Maia y de Stockfish 1320, contra el que hizo el 31\% de los puntos. Con la misma escalera, la red inicial había quedado en 1125. Sin las partidas contra Stockfish a profundidad 1, que se comporta distinto a los demás (le gana a Maia 1100 y a Maia 1500), queda en 1148 $\pm$ 83.
+El modelo le gana con claridad al azar y a la regla de capturas, y pierde contra Maia y contra Stockfish; su mejor resultado entre estos últimos es contra Stockfish con la fuerza limitada a 1320.
 
-\subsection{Áreas de mejora}
+\subsection{Análisis de errores}
 
-Para ver en qué falla el modelo, analicé con Stockfish, a 10 jugadas de profundidad, las 8,554 jugadas que hizo en esas 690 partidas, sin contar las de la apertura fija. En cada jugada medí cuánto empeora la posición frente a la mejor jugada, en centipeones (centésimas del valor de un peón); si tenía un mate en una jugada y lo dio; y qué probabilidad les asignó a las jugadas ilegales antes de descartarlas (tabla~\ref{tab:analisis-partidas}).
+Para ver en qué falla el modelo, analicé con Stockfish, a 10 jugadas de profundidad, las 8,554 jugadas que hizo en sus 250 partidas, sin contar las de la apertura fija. En cada jugada medí cuánto empeora la posición frente a la mejor jugada, en centipeones (centésimas del valor de un peón); si tenía un mate en una jugada y lo dio; y qué probabilidad les asignó a las jugadas ilegales antes de descartarlas (tabla~\ref{tab:analisis-partidas}).
 
 \begin{table}[H]
 	\centering
@@ -790,17 +757,24 @@ Para ver en qué falla el modelo, analicé con Stockfish, a 10 jugadas de profun
 	\label{tab:analisis-partidas}
 \end{table}
 
-\paragraph{Rematar las partidas ganadas.} Es la falla más clara. En 423 jugadas tenía un mate en una y solo lo dio en 52 (12\%); en 415 de esas jugadas llevaba al menos 5 puntos de material de ventaja. Con esa ventaja, 42 partidas terminaron en tablas: 18 por ahogado y 24 por repetición. Hay dos causas probables. Primero, entre jugadores de 2,200 o más quien va muy abajo suele abandonar: en los datos casi no hay posiciones con tanta ventaja ni jugadas de mate en ellas. Segundo, el modelo solo ve la posición actual y no sabe que la está repitiendo. Se podría agregar a la entrada cuántas veces se ha repetido la posición, revisar antes de elegir si alguna jugada legal da mate, y entrenar también con partidas que terminan en mate.
+\paragraph{Rematar las partidas ganadas.} Es la falla más clara. En 423 jugadas tenía un mate en una y solo lo dio en 52 (12\%); en 415 de esas jugadas llevaba al menos 5 puntos de material de ventaja. Con esa ventaja, 42 partidas terminaron en tablas: 18 por ahogado y 24 por repetición. Hay dos causas probables. Primero, entre jugadores de 2,200 o más quien va muy abajo suele abandonar: en los datos casi no hay posiciones con tanta ventaja ni jugadas de mate en ellas. Segundo, el modelo solo ve la posición actual y no sabe que la está repitiendo.
+\paragraph{Errores tácticos en el medio juego.} En el medio juego el 9.2\% de sus jugadas pierde al menos una pieza menor, contra el 2.9\% en la apertura y el 3.6\% en el final. Es también la fase en la que menos acierta en prueba (37.9\%). El modelo elige la jugada que se parece a la de una persona, pero no calcula qué pasa después. Además, sus dos capas convolucionales solo combinan zonas de $5\times5$ casillas; las relaciones a lo largo de todo el tablero, como una dama o un alfil que ataca desde lejos, quedan a cargo de las capas densas.
+\paragraph{Posiciones poco comunes.} La probabilidad que asigna a jugadas ilegales sube del 0.3\% en la apertura al 16.3\% en el final, y del 2.4\% en las posiciones con material parejo al 15.2\% cuando va 5 puntos o más abajo. En las posiciones que se parecen poco a las de entrenamiento todavía duda de cómo se mueven las piezas.
+\subsection{Uso del modelo}
 
-\paragraph{Errores tácticos en el medio juego.} En el medio juego el 9.2\% de sus jugadas pierde al menos una pieza menor, contra el 2.9\% en la apertura y el 3.6\% en el final. Es también la fase en la que menos acierta en prueba (37.9\%). El modelo elige la jugada que se parece a la de una persona, pero no calcula qué pasa después. Además, sus dos capas convolucionales solo combinan zonas de $5\times5$ casillas; las relaciones a lo largo de todo el tablero, como una dama o un alfil que ataca desde lejos, quedan a cargo de las capas densas. Más capas convolucionales, o una búsqueda corta que revise las primeras opciones uno o dos \textit{plies} adelante con una red que estime quién va ganando, podrían reducir estos errores.
+El modelo se puede usar de dos maneras. En la ventana de juego se elige quién lleva cada color (una persona, el modelo, Stockfish o un jugador al azar) y se juega con el ratón; cuando mueve el modelo, la ventana muestra sus tres jugadas más probables con una flecha y una barra del mismo color, la probabilidad que puso en jugadas ilegales y, junto al tablero, la ventaja de la posición según Stockfish (figura~\ref{fig:ventana}). Por consola, el modelo recibe una posición escrita en FEN y devuelve sus cinco jugadas más probables con su probabilidad.
 
-\paragraph{Posiciones poco comunes.} La probabilidad que asigna a jugadas ilegales sube del 0.3\% en la apertura al 16.3\% en el final, y del 2.4\% en las posiciones con material parejo al 15.2\% cuando va 5 puntos o más abajo. En las posiciones que se parecen poco a las de entrenamiento todavía duda de cómo se mueven las piezas. Se podría entrenar descartando las jugadas ilegales dentro del \textit{softmax}, para que la red no gaste capacidad en aprender las reglas, y agregar más finales y partidas de jugadores de menor nivel, donde estas posiciones son más frecuentes.
+\begin{figure*}[!t]
+	\centering
+	\includegraphics[width=0.72\textwidth]{figuras/juego_ventana.png}
+	\caption{Ventana del juego tras una jugada del modelo. Las flechas y las barras del panel muestran sus tres jugadas más probables; la barra de la izquierda, la ventaja según Stockfish.}
+	\label{fig:ventana}
+\end{figure*}
 
 % =====================================================================
-\onecolumn
 \section{Códigos}
 
-Todos los códigos están en \url{https://github.com/TheSimpleMau/Portafolio-Implementacion-Deeplearning}.
+Todos los códigos están en \url{https://github.com/TheSimpleMau/Portafolio-Implementacion-Deeplearning}. El archivo README explica cómo ejecutarlos.
 
 % Listados de código desactivados por ahora para reducir páginas; quitar el % para volver a incluirlos.
 % Codificación del tablero y de las jugadas.

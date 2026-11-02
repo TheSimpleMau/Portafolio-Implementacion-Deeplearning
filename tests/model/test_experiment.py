@@ -3,7 +3,9 @@ import random
 import chess
 import numpy as np
 
+from model import experiment
 from model.chessModels import compile_model, get_model
+from model.etlProcess import split_data
 from model.experiment import batch_generator, progress_line, steps
 from model.preprocessing import encode_move, encode_position, expand_planes
 
@@ -72,3 +74,34 @@ def test_cordura_el_modelo_memoriza_pocas_posiciones():
     history = model.fit(batch_generator(data, idx, batch_size=50, shuffle=True, seed=0),
                         steps_per_epoch=steps(idx, 50), epochs=15, shuffle=False, verbose=0)
     assert history.history["accuracy"][-1] > 0.9
+
+
+def test_final_entrena_con_train_y_val_y_evalua_solo_en_test(tmp_path, monkeypatch):
+    """La corrida final no tiene val para detenerse: entrena con train ∪ val, evalúa en test y no va al registro."""
+    data = synthetic_data(300)
+    data["game_id"] = np.arange(300) // 3  # 100 partidas de 3 posiciones
+    train, val, test = split_data(data["game_id"])
+    trained, evaluated = [], []
+
+    def recording_generator(data, idx, *args, **kwargs):
+        trained.append(idx)
+        return batch_generator(data, idx, *args, **kwargs)
+
+    def fake_evaluation(model, data, idx):
+        evaluated.append(idx)
+        values = {"posiciones": len(idx), "top1": 0.0, "top3": 0.0, "top5": 0.0, "top1_ilegal": 0.0}
+        return {"por_corte": {"todas": values}}
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(experiment, "load_data", lambda: data)
+    monkeypatch.setattr(experiment, "batch_generator", recording_generator)
+    monkeypatch.setattr(experiment.evaluation, "evaluate_model", fake_evaluation)
+    (tmp_path / "models").mkdir()
+    config = {"name": "final", "model": {}, "batch_size": 64, "learning_rate": 0.001, "epochs": 1, "seed": 0,
+              "model_path": "models/final.keras"}
+    experiment.run_final(config)
+
+    np.testing.assert_array_equal(trained[0], np.sort(np.concatenate([train, val])))
+    assert [idx.tolist() for idx in evaluated] == [test.tolist()]
+    assert (tmp_path / "models" / "final.keras").exists()
+    assert not (tmp_path / "resultados" / "registro_ejecuciones.csv").exists()

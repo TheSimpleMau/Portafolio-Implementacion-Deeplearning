@@ -314,17 +314,40 @@ def split_comparison(elo, ply, phase, splits, split_names, phase_names):
 
 
 def training_history(history, name):
-    """Pérdida y accuracy por época en train y val; la línea marca la época que guarda el checkpoint."""
+    """Pérdida y accuracy por época en train y val; la línea marca la época que guarda el checkpoint.
+
+    Sin val (corrida final con train+val) solo dibuja train y no hay mejor época que marcar.
+    """
     ensure_graphics_directory()
     df = pd.DataFrame(history)
     df.index += 1
-    best = df["val_loss"].idxmin()
+    has_val = "val_loss" in df
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
-    df.plot(y=["loss", "val_loss"], ax=axes[0], marker=".", title="Pérdida por época")
-    (df[["accuracy", "val_accuracy"]] * 100).plot(ax=axes[1], marker=".", title="Accuracy (top-1) por época")
+    df.plot(y=["loss", "val_loss"] if has_val else ["loss"], ax=axes[0], marker=".", title="Pérdida por época")
+    (df[["accuracy", "val_accuracy"] if has_val else ["accuracy"]] * 100).plot(
+        ax=axes[1], marker=".", title="Accuracy (top-1) por época")
     axes[1].set_ylabel("Porcentaje")
     for ax in axes:
-        ax.axvline(best, color="black", linestyle="--", label=f"Mejor época = {best}")
+        if has_val:
+            best = df["val_loss"].idxmin()
+            ax.axvline(best, color="black", linestyle="--", label=f"Mejor época = {best}")
         ax.set_xlabel("Época")
         ax.legend()
     _save(f"{name}_curvas.png")
+
+
+def topk_by_phase(by_cut, name):
+    """Top-1, top-3 y top-5 del modelo por fase (lo que devuelve evaluation.evaluate_model)."""
+    ensure_graphics_directory()
+    cuts = list(by_cut)
+    x = np.arange(len(cuts))
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    for offset, k in ((-0.27, 1), (0, 3), (0.27, 5)):
+        values = [by_cut[cut][f"top{k}"] * 100 for cut in cuts]
+        bars = ax.bar(x + offset, values, 0.27, label=f"Top-{k}")
+        ax.bar_label(bars, fmt="%.1f", fontsize=9)
+    ax.set_xticks(x, [cut.capitalize() for cut in cuts])
+    ax.set_ylim(0, 105)
+    ax.set_ylabel("Acierto (%)")
+    ax.legend(loc="upper right", ncol=3)
+    _save(f"{name}_por_fase.png")

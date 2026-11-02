@@ -8,7 +8,10 @@ REGISTRY_NAME = "registro_ejecuciones.csv"
 
 
 def save_run(config, history, metrics, directory=RESULTS_DIRECTORY):
-    """Guarda la configuración, las métricas y el historial de una corrida, y la agrega al registro."""
+    """Guarda la configuración, las métricas y el historial de una corrida.
+
+    Solo las corridas con validación van al registro, para que no mezcle cifras de test con las de val.
+    """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_dir = os.path.join(directory, f"{config['name']}_{timestamp}")
     os.makedirs(run_dir, exist_ok=True)
@@ -17,7 +20,14 @@ def save_run(config, history, metrics, directory=RESULTS_DIRECTORY):
         json.dump({"timestamp": timestamp, "config": config, **metrics}, file, indent=2, ensure_ascii=False)
     with open(os.path.join(run_dir, "historial.json"), "w", encoding="utf-8") as file:
         json.dump(history, file, indent=2)
+    if "por_corte" in metrics:
+        add_to_registry(directory, timestamp, config, history, metrics)
 
+    print(f"\nCorrida guardada en: {run_dir}")
+    return run_dir
+
+
+def add_to_registry(directory, timestamp, config, history, metrics):
     all_positions = metrics["por_corte"]["todas"]
     row = {
         "timestamp": timestamp,
@@ -40,6 +50,3 @@ def save_run(config, history, metrics, directory=RESULTS_DIRECTORY):
         if is_new:
             writer.writeheader()
         writer.writerow(row)
-
-    print(f"\nCorrida guardada en: {run_dir}")
-    return run_dir

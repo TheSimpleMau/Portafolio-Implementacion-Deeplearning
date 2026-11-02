@@ -60,6 +60,8 @@ BAR_TICK = (140, 148, 158)
 ARROW_COLORS = ((29, 185, 170), (240, 170, 40), (160, 110, 230))  # 1.º, 2.º y 3.º puesto del modelo
 ARROW_ALPHA = 215
 BADGE_TEXT = (20, 24, 30)
+BADGE_POSITIONS = (0.7, 0.5, 0.3, 0.85)  # a lo largo de la flecha, en orden de preferencia
+BADGE_GAP = 64  # distancia mínima entre centros de insignias
 
 FONT_NAMES = "avenirnext,helveticaneue,helvetica,arial"
 PAD = 28
@@ -192,8 +194,8 @@ def badge(canvas, fonts, center, number, color):
     draw_text(canvas, fonts.bold, str(number), BADGE_TEXT, (x, y), "center")
 
 
-def draw_arrow(canvas, fonts, start, end, prob, rank, badge_t):
-    """Flecha de un solo polígono con bordes suaves; el color y la insignia indican el puesto del modelo."""
+def draw_arrow(canvas, start, end, prob, rank):
+    """Flecha de un solo polígono con bordes suaves; el color indica el puesto del modelo."""
     direction = (end - start).normalize()
     normal = pygame.Vector2(-direction.y, direction.x)
     half = (20 + 28 * prob ** 0.5) / 2
@@ -207,7 +209,6 @@ def draw_arrow(canvas, fonts, start, end, prob, rank, badge_t):
     color = (*ARROW_COLORS[rank], ARROW_ALPHA)
     pygame.gfxdraw.filled_polygon(canvas, points, color)
     pygame.gfxdraw.aapolygon(canvas, points, color)
-    badge(canvas, fonts, start + (end - start) * badge_t, rank + 1, ARROW_COLORS[rank])
 
 
 class Fonts:
@@ -517,11 +518,16 @@ class ChessGame:
         # Las flechas solo se ven mientras la última jugada es la del modelo.
         if self.show_arrows and self.analysis and self.analysis[0] == self.board.ply() - 1:
             top = self.analysis[2]
+            ends = [(self.center(move.from_square), self.center(move.to_square)) for _, _, move in top]
             for rank in reversed(range(len(top))):
-                _, prob, move = top[rank]
-                shared = sum(1 for _, _, other in top[:rank] if other.to_square == move.to_square)
-                draw_arrow(self.canvas, self.fonts, self.center(move.from_square), self.center(move.to_square),
-                           prob, rank, 0.7 - 0.2 * shared)
+                draw_arrow(self.canvas, *ends[rank], top[rank][1], rank)
+            # Las insignias van después de todas las flechas y escalonadas para que ninguna quede tapada.
+            placed = []
+            for rank, (start, end) in enumerate(ends):
+                spots = [start + (end - start) * t for t in BADGE_POSITIONS]
+                spot = next((s for s in spots if all(s.distance_to(p) >= BADGE_GAP for p in placed)), spots[0])
+                placed.append(spot)
+                badge(self.canvas, self.fonts, spot, rank + 1, ARROW_COLORS[rank])
 
         outcome = self.board.outcome(claim_draw=True)
         if outcome:

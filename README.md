@@ -63,6 +63,7 @@ game/    # jugar contra el modelo
   players.py         # jugadores: modelo, Stockfish, Maia, captura y azar
   match.py           # partidas CPU vs CPU sin ventana y PGN
   gui.py             # ventana con pygame-ce
+  predict.py         # jugadas más probables del modelo para una posición, por consola
   elo.py             # Elo del modelo con una escalera de rivales
 tests/   # pytest
 ```
@@ -97,13 +98,41 @@ brew install stockfish
 python -m game.gui
 ```
 
-- En el menú se eligen las blancas y las negras (Humano, Modelo, Stockfish o Azar), la fuerza de cada Stockfish por separado (Elo 1320 a 2800, o completo) y el modelo entre los archivos `.keras` de `models/`.
-- Clic en la pieza y clic en el destino; la promoción es siempre a dama, como en el modelo. Si el humano lleva negras, el tablero se muestra desde su lado.
-- La barra junto al tablero y el panel muestran la ventaja según Stockfish a fuerza completa: evaluación en peones (o `#n` si hay mate) y probabilidad de ganar de las blancas con la fórmula de Lichess.
-- Cuando juega el modelo, las flechas y el panel muestran sus tres jugadas más probables (renormalizadas sobre las legales) y cuánta probabilidad puso en jugadas ilegales.
-- Cuando juegan dos CPU se elige el modo: **Automático** (juegan solas, con espacio para pausar) o **Manual** (cada jugada espera la flecha derecha o Enter).
-- Teclas: `n` nueva partida con los mismos jugadores, `u` deshacer, `Esc` vuelve al menú.
+- **Menú:** una tarjeta por color (blancas y negras) con Humano, Modelo, Stockfish o Azar. Solo se muestra lo que aplica: con Stockfish, su fuerza (Elo 1320 a 2800, o completo); con Modelo, el archivo `.keras` de `models/`. Por defecto juega un humano con blancas contra el modelo.
+- **Jugar:** clic en la pieza y clic en el destino (las jugadas legales se marcan con un punto o un anillo); la promoción es siempre a dama, como en el modelo. Si el humano lleva negras, el tablero se muestra desde su lado.
+- **Barra de ventaja** a la izquierda del tablero: la altura de la parte blanca es la probabilidad de ganar de las blancas según Stockfish a fuerza completa (fórmula de Lichess) y el número del extremo es la evaluación en peones (o `#n` si hay mate). Se anima al cambiar y no aparece si Stockfish no está instalado.
+- **Flechas del modelo:** tras cada jugada suya, tres flechas muestran sus jugadas más probables (renormalizadas sobre las legales), cada una con su color y su número (1, 2, 3). La tarjeta «Modelo» del panel repite esos colores con la probabilidad de cada jugada y la que el modelo puso en jugadas ilegales.
+- **Velocidad:** cuando juega alguna CPU, `+` y `-` (o ↑ y ↓, o los botones del panel) cambian el tiempo entre sus jugadas, de 2 s a la velocidad máxima; la pausa se activa con espacio o con su botón.
+- **Panel:** nombres de los jugadores, lista de jugadas en notación algebraica, tarjeta del modelo y controles (Nueva, Deshacer, Menú, Pausa, Flechas y velocidad), todos clicables.
+- **Teclas:** `n` nueva partida con los mismos jugadores, `u` deshacer, `a` mostrar u ocultar las flechas, `+`/`-` velocidad, espacio pausa y `Esc` vuelve al menú.
 - Al terminar, la partida se guarda en `resultados/partidas/` como PGN, con el top-3 del modelo como comentario en cada jugada suya.
+
+## Predicciones por consola
+
+```bash
+python -m game.predict
+```
+
+Imprime el tablero de una posición, las cinco jugadas más probables del modelo final (en notación algebraica, con su porcentaje) y la probabilidad que el modelo puso en jugadas ilegales. La posición (`FEN`), el archivo del modelo (`MODEL_PATH`) y cuántas jugadas mostrar (`TOP_K`) son constantes al inicio de `game/predict.py`. Con la posición inicial:
+
+```
+r n b q k b n r
+p p p p p p p p
+. . . . . . . .
+. . . . . . . .
+. . . . . . . .
+. . . . . . . .
+P P P P P P P P
+R N B Q K B N R
+
+Mueven blancas. Jugadas más probables:
+  e4        48.6 %
+  d4        33.8 %
+  Nf3        7.2 %
+  c4         6.2 %
+  b3         1.2 %
+Probabilidad que el modelo puso en jugadas ilegales: 0.0 %
+```
 
 ## Elo del modelo
 

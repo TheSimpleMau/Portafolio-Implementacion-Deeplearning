@@ -11,7 +11,20 @@ Entrenar con TensorFlow/Keras una red neuronal convolucional que, dada una posic
 
 ## Dataset
 
-Partidas de la [Lichess Open Database](https://database.lichess.org/) (licencia CC0), archivo `lichess_db_standard_rated_2026-09.pgn.zst` (partidas que no son Bullet entre jugadores humanos con Elo de 2,200 o más). El conjunto se divide por partida, no por posición, para evitar fuga de datos entre entrenamiento, validación y prueba.
+Partidas de la [Lichess Open Database](https://database.lichess.org/) (licencia CC0), archivo `lichess_db_standard_rated_2026-09.pgn.zst` (partidas que no son Bullet entre jugadores humanos con Elo de 2,200 o más). El conjunto se divide por partida, no por posición, para evitar fuga de datos entre entrenamiento, validación y prueba. Quedan 18,022,575 posiciones (14.4 M de entrenamiento, 1.8 M de validación y 1.8 M de prueba).
+
+## Resultados
+
+El modelo final es una red de dos capas convolucionales (64 y 128 filtros de 3×3), una capa densa de 2,048 unidades con *Dropout* 0.5 y una salida *softmax* de 4,096 clases (25.3 M de parámetros). Se entrenó con entrenamiento y validación juntos durante 6 épocas y se evaluó una sola vez en prueba, eligiendo la jugada real entre las jugadas legales:
+
+| Corte | Posiciones | Top-1 | Top-3 | Top-5 | Primera opción ilegal |
+|---|---|---|---|---|---|
+| Todas | 1,802,151 | 43.0 % | 70.3 % | 81.1 % | 1.4 % |
+| Apertura | 553,696 | 53.9 % | 82.7 % | 91.9 % | 0.1 % |
+| Medio juego | 1,083,263 | 37.9 % | 64.2 % | 75.6 % | 1.7 % |
+| Final | 165,192 | 40.1 % | 68.5 % | 80.4 % | 3.8 % |
+
+La última columna es el porcentaje de posiciones donde la jugada con mayor probabilidad del modelo es ilegal; el resto de las columnas se calcula después de descartar las ilegales. El análisis completo está en el [reporte](reporte/reporte.pdf).
 
 ## Entorno
 
@@ -73,18 +86,27 @@ tests/   # pytest
 Con el entorno activado:
 
 ```bash
-python main.py                # entrena y evalúa las corridas de EXPERIMENTS; la configuración está al inicio del archivo
+python main.py                # con FINAL = True, la corrida final (entrenamiento + validación, prueba una vez); con FINAL = False, las corridas de EXPERIMENTS en validación. La configuración está al inicio del archivo
 python -m model.etlProcess filtrar   # crudo de data/raw/ a data/processed/games_<mes>.parquet (una vez)
 python -m model.etlProcess    # ETL: posiciones desde el Parquet (o desde el crudo si no existe)
 python -m model.eda           # gráficas del análisis exploratorio en graficas/
 python -m model.eda aperturas # aperturas, ritmos, terminación y duración de las partidas usadas
 python -m model.evaluation    # líneas base en validación
-python -m model.evaluation aperturas models/m1.keras   # acierto del modelo por apertura
-python -m game.elo models/m1.keras   # Elo del modelo (ver abajo)
+python -m model.evaluation aperturas models/final_dropout_05_dense_2048.keras   # acierto del modelo por apertura
+python -m game.elo models/final_dropout_05_dense_2048.keras   # Elo del modelo (ver abajo)
 pytest -q
 ```
 
-El mejor modelo (menor pérdida en validación) se guarda en `models/m1.keras`; las métricas, en `resultados/`, y las curvas, en `graficas/`.
+Cada corrida guarda su mejor modelo (menor pérdida en validación) en `models/<nombre>.keras`; la corrida final guarda `models/final_dropout_05_dense_2048.keras`. Las métricas van en `resultados/` y las curvas en `graficas/`.
+
+## Obtener un modelo
+
+La carpeta `models/` no está en el repositorio, así que tras clonarlo no hay ningún `.keras` y ni `game.predict` ni la ventana del juego funcionan hasta crear uno. Con el entorno activado (para entrenar en GPU, `main.py` se corre con `.venv-metal`):
+
+1. Descargar `lichess_db_standard_rated_2026-09.pgn.zst` (unos 29 GB) de la [Lichess Open Database](https://database.lichess.org/) a `data/raw/`.
+2. `python -m model.etlProcess filtrar` deja las partidas filtradas en `data/processed/games_2026-09.parquet` (una vez).
+3. `python -m model.etlProcess` genera las posiciones (unos 40 minutos; necesita varios GB de memoria).
+4. `python main.py` con `FINAL = True` entrena y guarda `models/final_dropout_05_dense_2048.keras` (unas 3.5 horas en la GPU de un Mac con Apple silicon).
 
 ## Jugar contra el modelo
 

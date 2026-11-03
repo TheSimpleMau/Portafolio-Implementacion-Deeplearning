@@ -1,5 +1,6 @@
 .DS_Store
 .venv/
+.venv-metal/
 __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
@@ -25,3 +26,4 @@ articulos_investigacion/
 *.run.xml
 *.synctex.gz
 *.toc
+*-blx.bib

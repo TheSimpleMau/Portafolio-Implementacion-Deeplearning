@@ -1,0 +1,85 @@
+% Diagrama de la arquitectura del modelo (figura de la sección «Primer modelo»).
+% Cómo editarlo: los textos están en los \node de las etiquetas (al final de cada bloque); los colores, en
+%   el bloque «Colores»; el tamaño de cada capa, en los argumentos de \cubo (ancho, alto, profundidad) y de \capavec.
+% Cómo regenerarlo (desde esta carpeta):   pdflatex arquitectura.tex   -> arquitectura.pdf (el reporte lo incluye).
+% Dependencias: TeX Live con tikz y standalone (los mismos paquetes del reporte).
+\documentclass[tikz,border=3pt]{standalone}
+\usepackage[spanish,es-noshorthands]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{amsmath}
+\usetikzlibrary{calc,patterns,arrows.meta}
+
+% Colores (los del reporte, más un acento para la salida)
+\definecolor{skyblue}{RGB}{122,177,226}
+\definecolor{daphne}{RGB}{51,118,185}
+\definecolor{AirForceBlue}{RGB}{21,58,89}
+\definecolor{midnight}{RGB}{18,34,62}
+\definecolor{acento}{RGB}{231,138,43}
+\definecolor{casillaclara}{RGB}{240,217,181}
+\definecolor{casillaoscura}{RGB}{181,136,99}
+
+% \cubo{x}{y}{ancho}{alto}{profundidad}{color}: volumen con la cara frontal en (x,y) y sus tres caras visibles
+\newcommand{\cubo}[6]{%
+  \pgfmathsetmacro{\dx}{0.55*#5}\pgfmathsetmacro{\dy}{0.40*#5}%
+  \filldraw[fill=#6!55!white, draw=midnight, line width=0.3pt]
+    (#1+#3,#2) -- (#1+#3+\dx,#2+\dy) -- (#1+#3+\dx,#2+#4+\dy) -- (#1+#3,#2+#4) -- cycle;
+  \filldraw[fill=#6!30!white, draw=midnight, line width=0.3pt]
+    (#1,#2+#4) -- (#1+\dx,#2+#4+\dy) -- (#1+#3+\dx,#2+#4+\dy) -- (#1+#3,#2+#4) -- cycle;
+  \filldraw[fill=#6, draw=midnight, line width=0.3pt] (#1,#2) rectangle (#1+#3,#2+#4);}
+
+% \capavec{x}{y}{alto}{color}: capa como barra vertical de neuronas
+\newcommand{\capavec}[4]{%
+  \filldraw[fill=#4, draw=midnight, line width=0.3pt, rounded corners=1.2pt] (#1,#2) rectangle (#1+0.34,#2+#3);}
+
+\begin{document}
+\begin{tikzpicture}[font=\sffamily\footnotesize, >={Stealth[length=4pt]}, flecha/.style={draw=midnight!70, line width=0.7pt, ->}]
+
+  % --- Entrada: tablero de 8x8 casillas con 17 canales ---
+  \cubo{0}{-0.8}{1.6}{1.6}{0.45}{skyblue}
+  \foreach \i in {0,...,7}{\foreach \j in {0,...,7}{
+    \pgfmathparse{mod(\i+\j,2)==0 ? 1 : 0}
+    \ifnum\pgfmathresult=1 \fill[casillaoscura] (0.2*\i,-0.8+0.2*\j) rectangle +(0.2,0.2);
+    \else \fill[casillaclara] (0.2*\i,-0.8+0.2*\j) rectangle +(0.2,0.2);\fi}}
+  \draw[midnight, line width=0.3pt] (0,-0.8) rectangle (1.6,0.8);
+  \node[align=center] at (1.0,-1.55) {\bfseries Tablero\\[-1pt]$8\times8\times17$};
+
+  % --- Capas convolucionales ---
+  \draw[flecha] (2.25,0) -- (3.0,0);
+  \cubo{3.15}{-0.8}{1.6}{1.6}{1.1}{daphne}
+  \draw[white!85!daphne, line width=0.25pt] foreach \k in {1,...,7}{(3.15+0.2*\k,-0.8) -- (3.15+0.2*\k,0.8) (3.15,-0.8+0.2*\k) -- (4.75,-0.8+0.2*\k)};
+  \node[align=center] at (4.0,-1.55) {\bfseries Capa convolucional\\[-1pt]$3\times3$, 64 filtros\\[-1pt]$8\times8\times64$};
+
+  \draw[flecha] (5.6,0) -- (6.3,0);
+  \cubo{6.45}{-0.8}{1.6}{1.6}{1.8}{AirForceBlue}
+  \draw[white!80!AirForceBlue, line width=0.25pt] foreach \k in {1,...,7}{(6.45+0.2*\k,-0.8) -- (6.45+0.2*\k,0.8) (6.45,-0.8+0.2*\k) -- (8.05,-0.8+0.2*\k)};
+  \node[align=center] at (7.45,-1.55) {\bfseries Capa convolucional\\[-1pt]$3\times3$, 128 filtros\\[-1pt]$8\times8\times128$};
+
+  % --- Aplanado y capas densas ---
+  \draw[flecha] (9.2,0) -- node[above=1pt]{\itshape Flatten} (10.35,0);
+  \capavec{10.5}{-1.5}{3.0}{skyblue}
+  \node[align=center] at (10.67,-1.95) {\bfseries Vector\\[-1pt]8,192};
+
+  \draw[flecha] (11.05,0) -- (11.85,0);
+  \capavec{12.0}{-1.0}{2.0}{daphne}
+  \node[align=center] at (12.17,-1.45) {\bfseries Densa\\[-1pt]2,048};
+
+  % Dropout: neuronas apagadas (rayadas) durante el entrenamiento
+  \draw[flecha] (12.7,0) -- (13.5,0);
+  \foreach \y in {-1.0,-0.6,-0.2,0.2,0.6}{\filldraw[fill=daphne!80!white, draw=midnight, line width=0.3pt] (13.65,\y) rectangle +(0.34,0.4);}
+  \foreach \y in {-0.6,0.2}{\filldraw[pattern=north east lines, pattern color=midnight!70, draw=midnight, line width=0.3pt] (13.65,\y) rectangle +(0.34,0.4);}
+  \node[align=center] at (13.82,-1.45) {\itshape\bfseries Dropout\\[-1pt]0.5};
+
+  \draw[flecha] (14.35,0) -- (15.15,0);
+  \capavec{15.3}{-1.5}{3.0}{AirForceBlue}
+  \node[align=center] at (15.47,-1.95) {\bfseries Densa\\[-1pt]4,096 (\textit{softmax})};
+
+  % --- Salida: probabilidad de cada jugada ---
+  \draw[flecha] (15.85,0) -- (16.35,0);
+  \foreach \h/\y in {0.95/0.55,0.55/0.15,0.30/-0.25,0.15/-0.65}{
+    \fill[acento] (16.45,\y) rectangle +(\h,0.3);}
+  \node[align=center, text=acento!70!black] at (17.0,-1.2) {\bfseries Probabilidad de\\[-1pt]cada jugada};
+
+\end{tikzpicture}
+\end{document}

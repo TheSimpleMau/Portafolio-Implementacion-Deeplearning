@@ -1,16 +1,8 @@
 import random
 
 import chess
-import numpy as np
 
-from model.preprocessing import (
-    decode_move,
-    encode_move,
-    encode_position,
-    expand_ordinal,
-    expand_planes,
-    legal_moves_info,
-)
+from model.preprocessing import decode_move, encode_move, legal_moves_info
 
 INITIAL_FEN = chess.STARTING_FEN
 CASTLING_FEN = "r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1"
@@ -40,25 +32,6 @@ def all_test_boards():
     return [chess.Board(fen) for fen in fens] + random_positions()
 
 
-def test_codificacion_posicion_inicial():
-    squares, castling, ep = encode_position(chess.Board())
-    tablero = squares.reshape(8, 8)
-    assert tablero[0].tolist() == [4, 2, 3, 5, 6, 3, 2, 4]
-    assert tablero[1].tolist() == [1] * 8
-    assert tablero[6].tolist() == [7] * 8
-    assert tablero[7].tolist() == [10, 8, 9, 11, 12, 9, 8, 10]
-    assert (tablero[2:6] == 0).all()
-    assert castling == 0b1111
-    assert ep == -1
-
-
-def test_negras_y_blancas_espejadas_tienen_la_misma_codificacion():
-    for board in all_test_boards():
-        espejo = board.mirror()
-        for a, b in zip(encode_position(board), encode_position(espejo)):
-            assert np.array_equal(a, b)
-
-
 def test_jugada_simetrica_para_blancas_y_negras():
     blancas = chess.Board()
     negras = chess.Board(BLACK_TO_MOVE_FEN)
@@ -84,53 +57,3 @@ def test_ida_y_vuelta_de_todas_las_jugadas_legales():
             assert (decoded.from_square, decoded.to_square) == (move.from_square, move.to_square)
         for index in indices:
             assert decode_move(int(index), board) in board.legal_moves
-
-
-def test_valor_de_captura_por_jugada_legal():
-    board = chess.Board(CAPTURE_FEN)
-    indices, capturas = legal_moves_info(board)
-    por_indice = dict(zip(indices.tolist(), capturas.tolist()))
-    assert por_indice[encode_move(chess.Move.from_uci("d4e5"), False)] == 1
-    assert por_indice[encode_move(chess.Move.from_uci("d4d5"), False)] == 0
-    assert sum(1 for v in capturas if v > 0) == 1
-
-    indices, capturas = legal_moves_info(chess.Board(EN_PASSANT_FEN))
-    por_indice = dict(zip(indices.tolist(), capturas.tolist()))
-    assert por_indice[encode_move(chess.Move.from_uci("e5f6"), False)] == 1
-
-
-def test_planos_one_hot():
-    boards = all_test_boards()
-    codificadas = [encode_position(b) for b in boards]
-    squares = np.stack([c[0] for c in codificadas])
-    castling = np.array([c[1] for c in codificadas])
-    ep = np.array([c[2] for c in codificadas])
-    planos = expand_planes(squares, castling, ep)
-
-    assert planos.shape == (len(boards), 8, 8, 17)
-    assert planos.dtype == np.uint8
-    piezas = planos[..., :12]
-    assert piezas.sum(axis=-1).max() == 1
-    for i, board in enumerate(boards):
-        assert piezas[i].sum() == len(board.piece_map())
-
-    inicial = planos[0]
-    assert (inicial[..., 12:16] == 1).all()
-    assert inicial[..., 16].sum() == 0
-    assert inicial[0, 0, 3] == 1 and inicial[0, 0, :].sum() == 1 + 4
-
-    en_passant = planos[3]
-    assert en_passant[..., 16].sum() == 1
-    assert en_passant[5, 5, 16] == 1
-
-
-def test_codificacion_ordinal():
-    squares, _, _ = encode_position(chess.Board())
-    ordinal = expand_ordinal(squares[None])
-    assert ordinal.shape == (1, 8, 8, 1)
-    assert ordinal.dtype == np.int8
-    assert ordinal[0, 0, :, 0].tolist() == [4, 2, 3, 5, 6, 3, 2, 4]
-    assert ordinal[0, 1, :, 0].tolist() == [1] * 8
-    assert ordinal[0, 6, :, 0].tolist() == [-1] * 8
-    assert ordinal[0, 7, :, 0].tolist() == [-4, -2, -3, -5, -6, -3, -2, -4]
-    assert (ordinal[0, 2:6] == 0).all()

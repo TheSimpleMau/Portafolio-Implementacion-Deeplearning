@@ -3,6 +3,8 @@
 **Autor:** Mauricio Olguín Sánchez
 **Matrícula:** A01711522
 
+**Reporte:** [reporte/reporte.pdf](reporte/reporte.pdf)
+
 Proyecto del módulo de *Deep Learning* (Inteligencia artificial avanzada para la ciencia de datos, Tecnológico de Monterrey).
 
 ## Objetivo
@@ -78,7 +80,7 @@ game/    # jugar contra el modelo
   gui.py             # ventana con pygame-ce
   predict.py         # jugadas más probables del modelo para una posición, por consola
   elo.py             # Elo del modelo con una escalera de rivales
-tests/   # pytest
+tests/   # pytest: las jugadas del juego respetan las reglas
 ```
 
 ## Uso
@@ -135,25 +137,36 @@ python -m game.gui
 python -m game.predict
 ```
 
-Imprime el tablero de una posición, las cinco jugadas más probables del modelo final (en notación algebraica, con su porcentaje) y la probabilidad que el modelo puso en jugadas ilegales. La posición (`FEN`), el archivo del modelo (`MODEL_PATH`) y cuántas jugadas mostrar (`TOP_K`) son constantes al inicio de `game/predict.py`. Con la posición inicial:
+Lee las posiciones de `interesantes.fen` (una FEN por línea; una línea con `#` antes de la FEN es su título) y, por cada una, imprime el tablero recibido, las cinco jugadas más probables del modelo final (en notación algebraica, con su porcentaje), la probabilidad que el modelo puso en jugadas ilegales y el tablero que resulta de jugar la predicha. Con un argumento predice solo esa posición, por ejemplo `python -m game.predict "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"` (entre comillas, porque la FEN lleva espacios). El modelo (`MODEL_PATH`) y cuántas jugadas mostrar (`TOP_K`) son constantes al inicio de `game/predict.py`. `interesantes.fen` trae once casos (aperturas, mates en una jugada, ahogado, captura al paso, enroque, promoción y una posición táctica). Primer caso, la respuesta de las negras a 1.e4:
 
 ```
+Posición recibida:
 r n b q k b n r
 p p p p p p p p
 . . . . . . . .
 . . . . . . . .
+. . . . P . . .
 . . . . . . . .
-. . . . . . . .
-P P P P P P P P
+P P P P . P P P
 R N B Q K B N R
 
-Mueven blancas. Jugadas más probables:
-  e4        48.6 %
-  d4        33.8 %
-  Nf3        7.2 %
-  c4         6.2 %
-  b3         1.2 %
+Mueven negras. Jugadas más probables:
+  c5        43.0 %
+  e5        19.1 %
+  c6        11.0 %
+  e6        10.0 %
+  d5         4.7 %
 Probabilidad que el modelo puso en jugadas ilegales: 0.0 %
+
+Posición tras la jugada predicha, c5:
+r n b q k b n r
+p p . p p p p p
+. . . . . . . .
+. . p . . . . .
+. . . . P . . .
+. . . . . . . .
+P P P P . P P P
+R N B Q K B N R
 ```
 
 ## Elo del modelo

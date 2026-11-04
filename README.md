@@ -133,11 +133,19 @@ python -m game.gui
 
 ## Predicciones por consola
 
+`game.predict` recibe una posición en notación FEN e imprime el tablero recibido, las cinco jugadas más probables del modelo final (en notación algebraica, con su porcentaje), la probabilidad que el modelo puso en jugadas ilegales y el tablero tras la jugada predicha. La FEN va entre comillas porque lleva espacios. El modelo (`MODEL_PATH`) y cuántas jugadas mostrar (`TOP_K`) son constantes al inicio de `game/predict.py`.
+
+Sin argumento usa la posición inicial:
+
 ```bash
 python -m game.predict
 ```
 
-Lee las posiciones de `interesantes.fen` (una FEN por línea; una línea con `#` antes de la FEN es su título) y, por cada una, imprime el tablero recibido, las cinco jugadas más probables del modelo final (en notación algebraica, con su porcentaje), la probabilidad que el modelo puso en jugadas ilegales y el tablero que resulta de jugar la predicha. Con un argumento predice solo esa posición, por ejemplo `python -m game.predict "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"` (entre comillas, porque la FEN lleva espacios). El modelo (`MODEL_PATH`) y cuántas jugadas mostrar (`TOP_K`) son constantes al inicio de `game/predict.py`. `interesantes.fen` trae once casos (aperturas, mates en una jugada, ahogado, captura al paso, enroque, promoción y una posición táctica). Primer caso, la respuesta de las negras a 1.e4:
+Respuesta de las negras a 1.e4:
+
+```bash
+python -m game.predict "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+```
 
 ```
 Posición recibida:
@@ -167,6 +175,12 @@ p p . p p p p p
 . . . . . . . .
 P P P P . P P P
 R N B Q K B N R
+```
+
+Una dama negra sin defensa, que el caballo de f3 puede capturar:
+
+```bash
+python -m game.predict "rnb1kbnr/pppp1ppp/8/4p3/4P2q/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3"
 ```
 
 ## Elo del modelo

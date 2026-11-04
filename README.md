@@ -3,6 +3,8 @@
 **Autor:** Mauricio Olguín Sánchez
 **Matrícula:** A01711522
 
+**Reporte:** [reporte/reporte.pdf](reporte/reporte.pdf)
+
 Proyecto del módulo de *Deep Learning* (Inteligencia artificial avanzada para la ciencia de datos, Tecnológico de Monterrey).
 
 ## Objetivo
@@ -78,7 +80,7 @@ game/    # jugar contra el modelo
   gui.py             # ventana con pygame-ce
   predict.py         # jugadas más probables del modelo para una posición, por consola
   elo.py             # Elo del modelo con una escalera de rivales
-tests/   # pytest
+tests/   # pytest: las jugadas del juego respetan las reglas
 ```
 
 ## Uso

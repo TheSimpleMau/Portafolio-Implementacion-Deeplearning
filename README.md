@@ -1,11 +1,10 @@
 # Predicción de jugadas de ajedrez con una CNN
 
 **Autor:** Mauricio Olguín Sánchez
+
 **Matrícula:** A01711522
 
 **Reporte:** [reporte/reporte.pdf](reporte/reporte.pdf)
-
-Proyecto del módulo de *Deep Learning* (Inteligencia artificial avanzada para la ciencia de datos, Tecnológico de Monterrey).
 
 ## Objetivo
 
@@ -14,19 +13,6 @@ Entrenar con TensorFlow/Keras una red neuronal convolucional que, dada una posic
 ## Dataset
 
 Partidas de la [Lichess Open Database](https://database.lichess.org/) (licencia CC0), archivo `lichess_db_standard_rated_2026-09.pgn.zst` (partidas que no son Bullet entre jugadores humanos con Elo de 2,200 o más). El conjunto se divide por partida, no por posición, para evitar fuga de datos entre entrenamiento, validación y prueba. Quedan 18,022,575 posiciones (14.4 M de entrenamiento, 1.8 M de validación y 1.8 M de prueba).
-
-## Resultados
-
-El modelo final es una red de dos capas convolucionales (64 y 128 filtros de 3×3), una capa densa de 2,048 unidades con *Dropout* 0.5 y una salida *softmax* de 4,096 clases (25.3 M de parámetros). Se entrenó con entrenamiento y validación juntos durante 6 épocas y se evaluó una sola vez en prueba, eligiendo la jugada real entre las jugadas legales:
-
-| Corte | Posiciones | Top-1 | Top-3 | Top-5 | Primera opción ilegal |
-|---|---|---|---|---|---|
-| Todas | 1,802,151 | 43.0 % | 70.3 % | 81.1 % | 1.4 % |
-| Apertura | 553,696 | 53.9 % | 82.7 % | 91.9 % | 0.1 % |
-| Medio juego | 1,083,263 | 37.9 % | 64.2 % | 75.6 % | 1.7 % |
-| Final | 165,192 | 40.1 % | 68.5 % | 80.4 % | 3.8 % |
-
-La última columna es el porcentaje de posiciones donde la jugada con mayor probabilidad del modelo es ilegal; el resto de las columnas se calcula después de descartar las ilegales. El análisis completo está en el [reporte](reporte/reporte.pdf).
 
 ## Entorno
 

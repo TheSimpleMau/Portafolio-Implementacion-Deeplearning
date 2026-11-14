@@ -6,6 +6,56 @@
 
 **Reporte:** [reporte/reporte.pdf](reporte/reporte.pdf)
 
+<p align="center">
+  <img src="reporte/figuras/juego_ventana.png" alt="Ventana del juego: el modelo muestra sus tres jugadas más probables con flechas" width="720">
+</p>
+
+Una red neuronal convolucional que, dada una posición de ajedrez, predice la jugada que haría un jugador de 2,200 Elo o más. Se entrenó con TensorFlow/Keras con 18 millones de posiciones de partidas reales de Lichess, y se puede jugar contra ella.
+
+## Lo más destacado
+
+- **43.0 % de acierto** de la jugada exacta (*top-1*) y **81.1 %** entre sus cinco primeras opciones (*top-5*) en posiciones de partidas que nunca vio, más del doble que la mejor línea base (20.3 %).
+- **18,022,575 posiciones** de partidas de jugadores de 2,200 Elo o más, divididas por partida, no por posición, para evitar fuga de datos.
+- **Juego contra el modelo** en una ventana con flechas de sus tres jugadas más probables y la barra de ventaja de Stockfish.
+- **Evaluado jugando**: gana el 82 % de los puntos contra un jugador al azar y el 71 % contra una regla de capturas, y se mide contra Stockfish y Maia.
+
+## Arquitectura
+
+<p align="center">
+  <img src="reporte/figuras/arquitectura.png" alt="Arquitectura: tablero 8×8×17, dos capas convolucionales, capa densa con Dropout y softmax de 4,096 jugadas" width="900">
+</p>
+
+El tablero entra como un tensor de 8×8×17. Dos capas convolucionales de 3×3 (64 y 128 filtros) extraen patrones de piezas; una capa densa de 2,048 neuronas con *Dropout* de 0.5 los combina, y una capa *softmax* da la probabilidad de cada una de las 4,096 jugadas (casilla de origen × casilla de destino).
+
+## Resultados
+
+Acierto en el conjunto de prueba, que se evaluó una sola vez (%), frente al *top-1* de la mejor línea base de cada corte:
+
+| Corte | Top-1 | Top-3 | Top-5 | Línea base |
+|---|---:|---:|---:|---:|
+| Todas las posiciones | **43.0** | 70.3 | 81.1 | 20.3 |
+| Apertura | **53.9** | 82.7 | 91.9 | 47.3 |
+| Medio juego | **37.9** | 64.2 | 75.6 | 17.6 |
+| Final | **40.1** | 68.5 | 80.4 | 20.6 |
+
+<p align="center">
+  <img src="reporte/figuras/modelo_final_curvas.png" alt="Pérdida y accuracy por época del entrenamiento final" width="760">
+</p>
+
+Resultado contra cada rival, en porcentaje de los puntos que hizo el modelo (con las tablas como medio punto):
+
+| Rival | Partidas | Puntos (%) |
+|---|---:|---:|
+| Azar | 40 | 82 |
+| Captura de mayor valor | 40 | 71 |
+| Stockfish 1320 | 40 | 31 |
+| Stockfish profundidad 1 | 40 | 21 |
+| Maia 1100 | 40 | 15 |
+| Maia 1900 | 40 | 14 |
+| Maia 1500 | 10 | 5 |
+
+El análisis completo está en el [reporte](reporte/reporte.pdf).
+
 ## Objetivo
 
 Entrenar con TensorFlow/Keras una red neuronal convolucional que, dada una posición del tablero, prediga la jugada que se jugó. Es un problema de clasificación multiclase: la entrada es el tablero (8×8 con canales por tipo de pieza) y la salida es una distribución de probabilidad sobre 4,096 jugadas posibles (casilla de origen × casilla de destino).
